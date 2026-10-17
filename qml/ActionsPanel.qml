@@ -211,6 +211,25 @@ nixdash has no privilege of its own, so that prompt is what permits it."
 
     readonly property int needed: actions.filter(function(a) { return a.urgency === "needed" }).length
 
+    // Two kinds of row live in this list, and showing them as one made it
+    // useless: a list that never shrinks teaches you to stop reading it.
+    //
+    // `working` is outstanding work - something is out of date, something
+    // failed, something was declared and not applied. Finishing it makes the
+    // row go away, which is what a suggestion is for.
+    //
+    // `standing` is routine: offers that are always here because the thing
+    // they do is always available. Collecting garbage and testing that the
+    // authorisation prompt works are tools, not problems, and they were
+    // sitting in the count making five look like five jobs.
+    //
+    // Urgency is already the marker - docs/actions.md describes gc-store as
+    // firing "always, at routine urgency" - so this reads the field rather
+    // than inventing a second one.
+    readonly property var working: actions.filter(function(a) { return a.urgency !== "routine" })
+    readonly property var standing: actions.filter(function(a) { return a.urgency === "routine" })
+    readonly property var ordered: working.concat(standing)
+
     readonly property var urgencyColors: ({
         "needed":  style.badDot,
         "advised": style.warnDot,
@@ -220,11 +239,15 @@ nixdash has no privilege of its own, so that prompt is what permits it."
     title: "Suggested actions"
     subtitle: errors.length > 0
               ? errors.length + " probe(s) failed"
-              : actions.length === 0 ? "nothing to do"
-              : actions.length + " suggested" + (needed > 0 ? ", " + needed + " needed" : "")
+              : working.length === 0
+                ? (standing.length > 0 ? "nothing to do · " + standing.length + " always available"
+                                       : "nothing to do")
+              : working.length + " to do" + (needed > 0 ? ", " + needed + " needed" : "")
+    // Routine offers no longer colour the panel. They are always present, so
+    // amber for their whole lifetime is amber that means nothing.
     state_: errors.length > 0 ? "stale"
           : needed > 0 ? "bad"
-          : actions.length > 0 ? "warn"
+          : working.length > 0 ? "warn"
           : "ok"
 
     Clipboard { id: actionClip }
@@ -270,8 +293,37 @@ nixdash has no privilege of its own, so that prompt is what permits it."
             width: parent.width
             spacing: 10
 
+            SelectableText {
+                visible: root.working.length === 0 && root.errors.length === 0
+                width: parent.width
+                horizontalAlignment: TextEdit.AlignHCenter
+                topPadding: 20
+                bottomPadding: 10
+                text: "Nothing needs doing."
+            }
+
             Repeater {
-                model: root.actions
+                // Work first, then the standing offers. One repeater rather
+                // than two: the card below is four hundred lines, and a
+                // second copy of it would drift from this one.
+                model: root.ordered
+
+                Column {
+                    width: parent.width
+                    spacing: 10
+
+                    // Rendered by the first routine row rather than sitting
+                    // between two repeaters, which is what lets both groups
+                    // share one delegate.
+                    SelectableText {
+                        visible: index === root.working.length && root.standing.length > 0
+                        width: parent.width
+                        topPadding: root.working.length > 0 ? 8 : 0
+                        text: "Always available"
+                        font.bold: true
+                        font.pixelSize: style.fontBody
+                        color: style.textMuted
+                    }
 
                 Rectangle {
                     width: parent.width
@@ -730,14 +782,7 @@ generations that would be your rollback targets." }
                         }
                     }
                 }
-            }
-
-            SelectableText {
-                visible: root.actions.length === 0 && root.errors.length === 0
-                width: parent.width
-                horizontalAlignment: TextEdit.AlignHCenter
-                topPadding: 20
-                text: "Nothing needs doing."
+                }
             }
 
             Repeater {

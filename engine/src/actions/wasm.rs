@@ -14,7 +14,7 @@ use crate::collector::Subject;
 /// yet, and these are two stat calls.
 pub struct WasmStale;
 
-fn project_dir() -> Option<PathBuf> {
+pub(super) fn project_dir() -> Option<PathBuf> {
     if let Ok(dir) = std::env::var("NIXDASH_PROJECT_DIR") {
         let p = PathBuf::from(dir);
         return p.is_dir().then_some(p);

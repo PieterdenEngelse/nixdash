@@ -95,6 +95,43 @@ pkgs.mkShell {
   packages = [ pkgs.lld ];
 }"#;
 
+/// Has a Qt for WebAssembly build ever succeeded here?
+///
+/// The default toolchain not carrying the Emscripten target is a fact, not a
+/// problem: nothing builds for Emscripten outside `nix develop .#wasm`, which
+/// brings its own toolchain. A compiled bundle is proof that the toolchain
+/// which matters resolves, and an offer to go install another one is then
+/// just a row that can never be cleared.
+///
+/// Absence is not treated as failure - a tree that has never built the
+/// browser UI gets the offer, which is when it is actually useful.
+fn wasm_bundle_built() -> bool {
+    super::wasm::project_dir()
+        .map(|d| d.join("ui-wasm/build/nixdash_ui_wasm_app.wasm").exists())
+        .unwrap_or(false)
+}
+
+/// Does anything here actually build for `wasm32-unknown-unknown`?
+///
+/// nixpkgs ships that target's std with every rustc, so its presence says
+/// nothing about intent - the old gate fired on any NixOS machine, warning
+/// about a linker for a target nobody was building. This project's browser UI
+/// uses Emscripten, so the honest answer here is no, and the row goes away.
+///
+/// Three small reads, all of files a build would have to name the target in.
+fn project_targets_bare_wasm() -> bool {
+    let Some(dir) = super::wasm::project_dir() else {
+        return false;
+    };
+    ["flake.nix", ".cargo/config.toml", "ui-wasm/build.sh"]
+        .iter()
+        .any(|f| {
+            std::fs::read_to_string(dir.join(f))
+                .map(|t| t.contains("wasm32-unknown-unknown"))
+                .unwrap_or(false)
+        })
+}
+
 impl ActionProvider for RustTargets {
     fn id(&self) -> &'static str {
         "rust-targets"
@@ -115,7 +152,9 @@ impl ActionProvider for RustTargets {
 
         let mut out = Vec::new();
 
-        if !has_em {
+        // Not "is it missing" but "is it missing AND does that stop
+        // anything": see wasm_bundle_built.
+        if !has_em && !wasm_bundle_built() {
             out.push(Action {
                 id: "rust-emscripten-target".into(),
                 title: "Default toolchain has no Emscripten target".into(),
@@ -170,8 +209,11 @@ impl ActionProvider for RustTargets {
             });
         }
 
-        // Only worth raising alongside the target that actually links with it.
-        if has_wasm && !has_lld {
+        // Only worth raising when the target is installed, lld is absent,
+        // AND something here builds for it. The third clause is the one that
+        // was missing: nixpkgs installs that std everywhere, so the first two
+        // are true on a machine that has never built for the web.
+        if has_wasm && !has_lld && project_targets_bare_wasm() {
             out.push(Action {
                 id: "rust-lld".into(),
                 title: "Default toolchain: wasm32-unknown-unknown, but no lld".into(),
@@ -249,28 +291,62 @@ impl ActionProvider for RustTargets {
 mod tests {
     use super::*;
 
+    /// Missing is not the same as blocking.
+    ///
+    /// This asserted `offered == !has_em`, which is why the row sat there for
+    /// good: the default toolchain will never carry the Emscripten target,
+    /// and nothing asks it to. The offer is now also conditional on there
+    /// being no evidence the toolchain that DOES build it works.
     #[test]
-    fn offers_only_what_is_actually_missing() {
+    fn the_emscripten_offer_needs_a_build_that_cannot_happen() {
         let v = RustCollector.sample().unwrap();
         let actions = RustTargets.actions().unwrap();
 
         let has_em = v["has_wasm32_emscripten"].as_bool().unwrap_or(false);
-        let offered_em = actions.iter().any(|a| a.id == "rust-emscripten-target");
+        let offered = actions.iter().any(|a| a.id == "rust-emscripten-target");
         assert_eq!(
-            offered_em, !has_em,
-            "emscripten action offered when the target is present, or vice versa"
+            offered,
+            !has_em && !wasm_bundle_built(),
+            "a compiled browser UI proves the Emscripten toolchain resolves, \
+             so offering to install another one is a row that never clears"
         );
     }
 
+    /// An installed std is not a statement of intent.
+    ///
+    /// nixpkgs ships wasm32-unknown-unknown with every rustc, so the old gate
+    /// fired on any NixOS machine - warning about a linker for a target
+    /// nothing was building. This project's browser UI uses Emscripten.
     #[test]
-    fn lld_action_requires_the_target_that_needs_it() {
-        // lld alone is not a problem; it only matters with
-        // wasm32-unknown-unknown installed.
+    fn the_lld_offer_needs_something_that_builds_for_that_target() {
         let v = RustCollector.sample().unwrap();
         let actions = RustTargets.actions().unwrap();
         let offered = actions.iter().any(|a| a.id == "rust-lld");
         let expect = v["has_wasm32_unknown"].as_bool().unwrap_or(false)
-            && !v["lld_available"].as_bool().unwrap_or(false);
+            && !v["lld_available"].as_bool().unwrap_or(false)
+            && project_targets_bare_wasm();
         assert_eq!(offered, expect);
+    }
+
+    /// The point of the whole change: on this machine, as it is, neither row
+    /// is offered. If one comes back, something it warns about became real -
+    /// which is the only reason either should appear.
+    #[test]
+    fn neither_rust_row_is_offered_on_a_working_tree() {
+        if super::super::wasm::project_dir().is_none() {
+            return;
+        }
+        let actions = RustTargets.actions().unwrap();
+        for id in ["rust-emscripten-target", "rust-lld"] {
+            if actions.iter().any(|a| a.id == id) {
+                // Not a failure by itself - say which evidence went missing.
+                panic!(
+                    "{id} is offered: wasm bundle built = {}, project targets \
+                     bare wasm = {}",
+                    wasm_bundle_built(),
+                    project_targets_bare_wasm()
+                );
+            }
+        }
     }
 }
