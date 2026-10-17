@@ -167,26 +167,6 @@ kernel change." }] },
 
                 ConfigSection {
                     Layout.fillWidth: true
-                    title: "Qt — WebAssembly"
-                    rows: [
-                        { label: "Browser UI built", value: root.val("qt-wasm", "built"),
-                          source: "ui-wasm/build.sh, inside nix develop .#wasm" },
-                        { label: "Up to date with qml/", value: root.val("qt-wasm", "stale") === "yes"
-                                                                ? "no" : root.val("qt-wasm", "stale"),
-                          source: root.val("qt-wasm", "newest_qml_file") },
-                        { label: "Qt for wasm", value: root.val("qt-wasm", "sdk_version"),
-                          source: root.val("qt-wasm", "sdk") },
-                        { label: "Same Qt as desktop", value: root.val("qt-wasm", "versions_match"),
-                          source: "" },
-                        { label: "Emscripten expected", value: root.val("qt-wasm", "emcc_recommended"),
-                          source: "pinned by this Qt; see ~/Projects/qt6-wasm" },
-                        { label: "Host Qt for codegen", value: root.val("qt-wasm", "host_env"),
-                          source: "QT_HOST_PATH - moc/rcc that run natively" }
-                    ]
-                }
-
-                ConfigSection {
-                    Layout.fillWidth: true
                     title: "Rust"
                     rows: [
                         { label: "rustc", value: root.val("rust", "rustc"),
@@ -195,24 +175,7 @@ kernel change." }] },
                         { label: "Installed targets", value: root.val("rust", "targets"),
                           source: "nixpkgs rustc, or a fenix toolchain in the devShell" },
                         { label: "lld available", value: root.val("rust", "lld_available"),
-                          source: "pkgs.lld in the devShell" },
-                        { label: "Running build", value: root.val("rust-build", "deployed") === "yes"
-                                                         ? "deployed (store)" : "dev build",
-                          source: root.val("rust-build", "running_exe") },
-                        // Which build is answering. The version number is the
-                        // same in every build ever made, so this is the only
-                        // row that can tell two of them apart.
-                        { label: "Built", value: root.val("rust-build", "built"),
-                          source: "baked in when it was compiled - a store path's own date is 1970" },
-                        // Three states, not two: "—" means the comparison
-                        // could not be made, and showing that as "yes" would
-                        // be the panel reassuring you about something it
-                        // never checked.
-                        { label: "Current with source", value: root.val("rust-build", "stale") === "—"
-                                                                ? "unknown"
-                                                                : root.val("rust-build", "stale") === "yes"
-                                                                  ? "no" : "yes",
-                          source: root.val("rust-build", "newest_source_file") }
+                          source: "pkgs.lld in the devShell" }
                     ]
                 }
 
@@ -227,16 +190,9 @@ kernel change." }] },
                     onChanged: root.ranAction()
                 }
 
-                // The other writable sections, in order of how much they can
-                // affect: this project's shell, then the whole machine. Same
-                // arrangement throughout - a generated file the app owns, never
-                // the hand-written one beside it.
-                DevShellSection {
-                    Layout.fillWidth: true
-                    apiBase: root.apiBase
-                    onChanged: root.ranAction()
-                }
-
+                // The machine's own writable section. This project's dev
+                // shell used to sit above it and now lives on the Dev page,
+                // beside the build readings it changes.
                 SystemSection {
                     Layout.fillWidth: true
                     apiBase: root.apiBase

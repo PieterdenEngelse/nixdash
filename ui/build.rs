@@ -25,6 +25,7 @@ fn main() {
             "qml/MonitorPage.qml",
             "qml/SubjectPage.qml",
             "qml/ConfigPage.qml",
+            "qml/DevPage.qml",
             "qml/ConfigSection.qml",
             "qml/SettingsSection.qml",
             "qml/DevShellSection.qml",
