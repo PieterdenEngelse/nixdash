@@ -47,13 +47,18 @@ pub fn known() -> Vec<Extra> {
             package: Some("lld"),
             env: vec![],
             verified_by: "rust.lld_available",
-            what: "Adds the lld linker to the development shell.",
-            why: "wasm32-unknown-unknown links with lld. Without it a build \
-                  for that target fails at the link step with \"linker `lld` \
-                  not found\" - which names the linker rather than the \
-                  target, and sends you looking in the wrong place.",
-            if_wrong: "Harmless if you never build for that target; it is one \
-                       small package sitting unused in the shell.",
+            what: "Adds the <tt>lld</tt> linker. Rust links the \
+                   <tt>wasm32-unknown-unknown</tt> target with it, and \
+                   nothing else here uses it.",
+            why: "Off is the normal state here, not a missing piece: the \
+                  browser UI links through <tt>emcc</tt>, and nothing in \
+                  this project builds the bare \
+                  <tt>wasm32-unknown-unknown</tt> target that needs \
+                  <tt>lld</tt>.",
+            if_wrong: "A bare-wasm build stopping at <tt>linker `lld` not \
+                       found</tt> is this package missing, not a broken \
+                       toolchain - the error names the linker, not the \
+                       target. Switched on it is one small unused package.",
         },
         Extra {
             key: "rust-src",
