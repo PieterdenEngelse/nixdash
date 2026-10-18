@@ -97,6 +97,10 @@ pkgs.mkShell {
 
 /// Has a Qt for WebAssembly build ever succeeded here?
 ///
+/// pub(crate) because the Rust PANEL needs the same answer: it coloured
+/// a missing emscripten target as a fault while this gate had already
+/// decided it was not one. Two places deciding meant two answers.
+///
 /// The default toolchain not carrying the Emscripten target is a fact, not a
 /// problem: nothing builds for Emscripten outside `nix develop .#wasm`, which
 /// brings its own toolchain. A compiled bundle is proof that the toolchain
@@ -105,7 +109,7 @@ pkgs.mkShell {
 ///
 /// Absence is not treated as failure - a tree that has never built the
 /// browser UI gets the offer, which is when it is actually useful.
-fn wasm_bundle_built() -> bool {
+pub(crate) fn wasm_bundle_built() -> bool {
     super::wasm::project_dir()
         .map(|d| d.join("ui-wasm/build/nixdash_ui_wasm_app.wasm").exists())
         .unwrap_or(false)
@@ -113,13 +117,16 @@ fn wasm_bundle_built() -> bool {
 
 /// Does anything here actually build for `wasm32-unknown-unknown`?
 ///
+/// pub(crate) for the same reason as above - the panel reads it rather
+/// than re-deriving it.
+///
 /// nixpkgs ships that target's std with every rustc, so its presence says
 /// nothing about intent - the old gate fired on any NixOS machine, warning
 /// about a linker for a target nobody was building. This project's browser UI
 /// uses Emscripten, so the honest answer here is no, and the row goes away.
 ///
 /// Three small reads, all of files a build would have to name the target in.
-fn project_targets_bare_wasm() -> bool {
+pub(crate) fn project_targets_bare_wasm() -> bool {
     let Some(dir) = super::wasm::project_dir() else {
         return false;
     };

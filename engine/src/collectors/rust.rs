@@ -84,6 +84,12 @@ struct RustReading {
     /// that differ between a nixpkgs and a fenix toolchain.
     has_wasm32_unknown: bool,
     has_wasm32_emscripten: bool,
+    /// Whether a browser-UI bundle exists in the tree, and whether anything
+    /// here names the bare wasm target. Both come from the action gates, so
+    /// the panel and the offers cannot disagree about whether an absent
+    /// target is a problem - which they did.
+    wasm_bundle_built: bool,
+    targets_bare_wasm: bool,
 }
 
 fn first_line(cmd: &str, args: &[&str]) -> Option<String> {
@@ -397,6 +403,40 @@ impl Collector for RustCollector {
                     },
                 },
                 StatInfo {
+                    key: "wasm_bundle_built",
+                    info: Info {
+                        what: "Whether a compiled browser-UI bundle exists in \
+                               the tree.",
+                        why: "It decides whether a missing Emscripten target \
+                              is a problem or merely a fact. Nothing builds \
+                              for Emscripten outside the wasm dev shell, \
+                              which brings its own toolchain - so a bundle \
+                              that exists is proof the toolchain that matters \
+                              resolves, whatever the default one lacks.",
+                        if_wrong: "False on a tree that has never built the \
+                                   browser UI, which is when an offer to \
+                                   install a toolchain is genuinely useful. \
+                                   It is not a fault either way.",
+                        sections: &[],
+                    },
+                },
+                StatInfo {
+                    key: "targets_bare_wasm",
+                    info: Info {
+                        what: "Whether anything here names \
+                               wasm32-unknown-unknown - read from flake.nix, \
+                               .cargo/config.toml and ui-wasm/build.sh.",
+                        why: "That target's std ships with every nixpkgs \
+                              rustc, so having it says nothing about intent. \
+                              This says whether it is actually built for, and \
+                              therefore whether a missing lld matters.",
+                        if_wrong: "False here is normal: this project's \
+                                   browser UI goes through Emscripten, which \
+                                   links with emcc and never calls lld.",
+                        sections: &[],
+                    },
+                },
+                StatInfo {
                     key: "has_wasm32_emscripten",
                     info: Info {
                         what: "Whether wasm32-unknown-emscripten std is \
@@ -482,6 +522,8 @@ impl Collector for RustCollector {
             cargo_config_files,
             has_wasm32_unknown: targets.iter().any(|t| t == "wasm32-unknown-unknown"),
             has_wasm32_emscripten: targets.iter().any(|t| t == "wasm32-unknown-emscripten"),
+            wasm_bundle_built: crate::actions::rust::wasm_bundle_built(),
+            targets_bare_wasm: crate::actions::rust::project_targets_bare_wasm(),
             host_target,
             targets,
         })?)
