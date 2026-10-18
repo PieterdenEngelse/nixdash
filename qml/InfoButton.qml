@@ -25,6 +25,9 @@ import QtQuick.Layouts
 // Length is not a virtue, but neither is brevity: say what is actually needed.
 // When one panel has more than about three screens of prose, split it with
 // `sections` rather than making people scroll past what they did not want.
+// So more room is always a tab or a link, never a longer body: a tab for our
+// own explanation, a link for what is upstream's to hold. A body that has run
+// out of room has answered the wrong question - which tab is this?
 //
 //   InfoButton {
 //       title: "Run"

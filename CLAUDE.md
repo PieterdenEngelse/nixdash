@@ -236,6 +236,24 @@ Bodies are rich text — `<b>`, `<tt>` for commands and paths, `<ul>`,
 `<table>`, and `<a href>` links that open in a browser. Long panels split
 into tabs via `sections: [{ title, body }]`.
 
+**When a body needs more room, it gets a tab or a link — never more
+characters.** `engine/tests/info_length.rs` caps one body at 1800 characters,
+and that cap is a tripwire for "this should have been split", not a budget to
+write up to. The corpus it was calibrated against has a median of ~110; a body
+approaching the limit is an outlier by a factor of fifteen, so the question to
+ask at that point is which tab it belongs in, not whether it still fits.
+
+The two escape hatches are not interchangeable:
+
+- **A tab** is for the app's own explanation — the mechanism, the trap, the
+  worked example. It keeps the material one click away, in the panel, where
+  someone learning this machine will actually meet it.
+- **A link** is for authority that is not ours to hold: the Qt docs, the NixOS
+  manual, polkit, `rustc`'s platform support table. Every link in the app
+  today points upstream, and that is the pattern — a link must never be a
+  way to put *our* explanation somewhere else, which is just scrolling with
+  extra steps and no offline copy.
+
 **Explain the mechanism, not the label.** "Shows memory usage" is a wasted
 panel. "Most of 'used' is reclaimable cache, so this number looks alarming and
 means little" is the one worth having.

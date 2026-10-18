@@ -189,9 +189,11 @@ fn no_info_body_is_long_enough_to_need_scrolling() {
                 .count();
             failures.push(format!(
                 "{name}:{line} - \"{label}\" is {} characters, over the {LIMIT} limit.\n    \
-                 Split it into sections rather than letting it scroll: a reader \
-                 should not have to scroll past the part they did not want. See \
-                 the header of qml/InfoButton.qml.",
+                 More room means a tab or a link, never more characters: split \
+                 it into sections, or link out if the material is upstream's \
+                 to hold rather than ours. A reader should not have to scroll \
+                 past the part they did not want. See the header of \
+                 qml/InfoButton.qml.",
                 body.chars().count()
             ));
         }
