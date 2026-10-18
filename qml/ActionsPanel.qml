@@ -230,6 +230,37 @@ nixdash has no privilege of its own, so that prompt is what permits it."
     readonly property var standing: actions.filter(function(a) { return a.urgency === "routine" })
     readonly property var ordered: working.concat(standing)
 
+    /// Ids of `ordered`, reassigned only when that SET changes.
+    ///
+    /// `ordered` is rebuilt from `actions` on every 2-second poll, so the
+    /// Repeater below was handed a new array each time and tore down every
+    /// delegate - taking with it any info panel open on an action. Same
+    /// cause as the subject-page panels; the long version of the reasoning
+    /// is in SubjectPage.qml.
+    ///
+    /// Written by the handler, never bound: a binding that read and assigned
+    /// this would be self-referential.
+    property var orderedIds: []
+
+    onOrderedChanged: {
+        var ids = []
+        for (var i = 0; i < root.ordered.length; i++)
+            ids.push(root.ordered[i].id)
+        if (ids.join("\u0000") !== root.orderedIds.join("\u0000"))
+            root.orderedIds = ids
+    }
+
+    function actionFor(id) {
+        for (var i = 0; i < root.ordered.length; i++)
+            if (root.ordered[i].id === id)
+                return root.ordered[i]
+        // An empty object, not null: when an action disappears, `ordered`
+        // updates before the id list does, so for one frame a live delegate
+        // looks up an id that has gone. Fields then read as undefined and
+        // render blank, instead of throwing on a null.
+        return ({})
+    }
+
     readonly property var urgencyColors: ({
         "needed":  style.badDot,
         "advised": style.warnDot,
@@ -306,9 +337,13 @@ nixdash has no privilege of its own, so that prompt is what permits it."
                 // Work first, then the standing offers. One repeater rather
                 // than two: the card below is four hundred lines, and a
                 // second copy of it would drift from this one.
-                model: root.ordered
+                model: root.orderedIds
 
                 Column {
+                    // modelData is the action's id now; the object is
+                    // resolved here so the card below reads unchanged.
+                    readonly property var act: root.actionFor(modelData)
+
                     width: parent.width
                     spacing: 10
 
@@ -346,13 +381,13 @@ nixdash has no privilege of its own, so that prompt is what permits it."
                             Rectangle {
                                 width: 8; height: 8; radius: 4
                                 anchors.verticalCenter: parent.verticalCenter
-                                color: root.urgencyColors[modelData.urgency] || style.unknownDot
+                                color: root.urgencyColors[act.urgency] || style.unknownDot
                             }
                             // Selectable, like everything else that carries
                             // content rather than chrome.
                             SelectableText {
                                 id: titleText
-                                text: modelData.title
+                                text: act.title
                                 font.bold: true
                                 font.pixelSize: style.fontBody
                                 color: palette.text
@@ -362,10 +397,10 @@ nixdash has no privilege of its own, so that prompt is what permits it."
                             // cannot tell you.
                             InfoButton {
                                 anchors.verticalCenter: parent.verticalCenter
-                                title: modelData.title
-                                what: modelData.info ? modelData.info.what : ""
-                                why: modelData.why
-                                ifWrong: modelData.info ? modelData.info.if_wrong : ""
+                                title: act.title
+                                what: act.info ? act.info.what : ""
+                                why: act.why
+                                ifWrong: act.info ? act.info.if_wrong : ""
                             }
                             // Shell vs Nix: "run this" and "paste this into a
                             // file, then rebuild" are different instructions,
@@ -375,20 +410,20 @@ nixdash has no privilege of its own, so that prompt is what permits it."
                                 width: kindLbl.implicitWidth + 10
                                 height: kindLbl.implicitHeight + 3
                                 radius: 3
-                                color: modelData.kind === "nix" ? style.nixBadgeTint : style.shellBadgeTint
+                                color: act.kind === "nix" ? style.nixBadgeTint : style.shellBadgeTint
                                 anchors.verticalCenter: parent.verticalCenter
                                 SelectableText {
                                     id: kindLbl
                                     anchors.centerIn: parent
-                                    text: modelData.kind === "nix"
+                                    text: act.kind === "nix"
                                           ? "paste into your Nix config"
                                           : "run in a terminal"
                                     font.pixelSize: style.fontBody
-                                    color: modelData.kind === "nix" ? style.nixBadgeText : style.shellBadgeText
+                                    color: act.kind === "nix" ? style.nixBadgeText : style.shellBadgeText
                                 }
                             }
                             Rectangle {
-                                visible: modelData.needs_root
+                                visible: act.needs_root
                                 width: rootLbl.implicitWidth + 10
                                 height: rootLbl.implicitHeight + 3
                                 radius: 3
@@ -407,7 +442,7 @@ nixdash has no privilege of its own, so that prompt is what permits it."
                             // the whole polkit model, and it is the piece
                             // people are least likely to already know.
                             InfoButton {
-                                visible: modelData.needs_root
+                                visible: act.needs_root
                                 anchors.verticalCenter: parent.verticalCenter
                                 title: "Needs root - how that works"
                                 what: "This action cannot run as you. nixdash \
@@ -422,7 +457,7 @@ process does not have, and would hang or fail silently. polkit splits the job \
 - a root daemon holds the authority, and a small agent in your desktop \
 session draws the prompt."
                                 ifWrong: "<ul>\
-<li><b>No dialog appears, action reports 'not authorised'.</b> Either you \
+<li><b>No dialog appears, act reports 'not authorised'.</b> Either you \
 dismissed it, or no authentication agent is running in this session to draw \
 it.</li>\
 <li><b><tt>pkexec must be setuid root</tt>.</b> The service is sandboxed in a \
@@ -519,7 +554,7 @@ systemd.exec(5)</a>." }
                         SelectableText {
                             id: whyText
                             width: parent.width
-                            text: modelData.why
+                            text: act.why
                             font.pixelSize: style.fontBody
                             color: palette.text
                             wrapMode: TextEdit.Wrap
@@ -538,7 +573,7 @@ systemd.exec(5)</a>." }
                                 id: cmd
                                 x: 7; y: 6
                                 width: parent.width - 14
-                                text: modelData.command
+                                text: act.command
                                 wrapMode: TextEdit.Wrap
                                 font.family: "monospace"
                                 font.pixelSize: style.fontBody
@@ -552,7 +587,7 @@ systemd.exec(5)</a>." }
 
                             Button {
                                 text: "Copy"
-                                onClicked: root.copyToClipboard(modelData.command)
+                                onClicked: root.copyToClipboard(act.command)
                             }
                             // Copy and Run put *different text* in play. That
                             // is the single most important thing about this
@@ -626,19 +661,19 @@ later overwrites, or fight Nix outright." }
                             // execute: a greyed-out Run would suggest the
                             // snippet is runnable and something is stopping it.
                             Button {
-                                visible: !!modelData.run
+                                visible: !!act.run
                                 enabled: {
-                                    var r = root.resultFor(modelData.id)
+                                    var r = root.resultFor(act.id)
                                     return !(r && r.running)
                                 }
                                 text: {
-                                    var r = root.resultFor(modelData.id)
+                                    var r = root.resultFor(act.id)
                                     if (r && r.running)
                                         return "Running…"
-                                    return modelData.needs_root ? "Run (asks for root)" : "Run"
+                                    return act.needs_root ? "Run (asks for root)" : "Run"
                                 }
                                 onClicked: {
-                                    confirm.action = modelData
+                                    confirm.act = act
                                     confirm.open()
                                 }
                             }
@@ -650,7 +685,7 @@ later overwrites, or fight Nix outright." }
                             // wrong - above all that it does not run the text
                             // in the box.
                             InfoButton {
-                                visible: !!modelData.run
+                                visible: !!act.run
                                 anchors.verticalCenter: parent.verticalCenter
                                 title: "Run"
                                 what: "Asks the engine to execute <i>this \
@@ -713,7 +748,7 @@ cannot provoke a prompt you did not go looking for.</li></ul>\
 <b>What this costs</b><br>\
 Until this feature existed the engine executed nothing at all, which made it \
 auditable in a way it no longer is. The API has no authentication, so anything \
-that can reach it can <i>ask</i> for a privileged action. The polkit prompt is \
+that can reach it can <i>ask</i> for a privileged act. The polkit prompt is \
 the only thing between that and a rebuild. That trade was made deliberately \
 and is written up in the project's <tt>docs/actions.md</tt>." },
                                     { title: "Troubleshooting", body: "\
@@ -743,7 +778,7 @@ generations that would be your rollback targets." }
                             }
                             SelectableText {
                                 anchors.verticalCenter: parent.verticalCenter
-                                text: modelData.effects.join("  ·  ")
+                                text: act.effects ? act.effects.join("  ·  ") : ""
                                 font.pixelSize: style.fontBody
                                 wrapMode: TextEdit.NoWrap
                                 clip: true
@@ -756,7 +791,7 @@ generations that would be your rollback targets." }
                         // logged, because a privileged action that quietly did
                         // nothing is the worst case.
                         Rectangle {
-                            property var res: root.resultFor(modelData.id)
+                            property var res: root.resultFor(act.id)
                             visible: res && !res.running && res.text !== ""
                             width: parent.width
                             height: resLbl.implicitHeight + 12

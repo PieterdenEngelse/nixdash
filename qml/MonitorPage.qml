@@ -77,6 +77,42 @@ Item {
         return a.urgency === "needed"
     })
 
+    /// Ids of `urgent`, reassigned only when that SET changes.
+    ///
+    /// `urgent` is a filter over `actions`, which Main replaces on every
+    /// 2-second poll - so the strip below was handed a new array each time
+    /// and rebuilt its delegates, deleting any info panel open on one. Same
+    /// cause as the subject-page panels and the action cards; the reasoning
+    /// is written out once, in SubjectPage.qml.
+    ///
+    /// Latent rather than observed: this strip only renders when something
+    /// is at `needed` urgency, and nothing was while the other two were
+    /// being fixed. Fixed anyway - the first time it does render is not when
+    /// you want to discover that its explanations will not stay open.
+    ///
+    /// Written by the handler, never bound: a binding reading and assigning
+    /// this would be self-referential.
+    property var urgentIds: []
+
+    onUrgentChanged: {
+        var ids = []
+        for (var i = 0; i < root.urgent.length; i++)
+            ids.push(root.urgent[i].id)
+        if (ids.join("\u0000") !== root.urgentIds.join("\u0000"))
+            root.urgentIds = ids
+    }
+
+    function urgentFor(id) {
+        for (var i = 0; i < root.urgent.length; i++)
+            if (root.urgent[i].id === id)
+                return root.urgent[i]
+        // An empty object, not null: when an action disappears, `ordered`
+        // updates before the id list does, so for one frame a live delegate
+        // looks up an id that has gone. Fields then read as undefined and
+        // render blank, instead of throwing on a null.
+        return ({})
+    }
+
     ScrollView {
         anchors.fill: parent
         anchors.margins: 14
@@ -94,8 +130,13 @@ Item {
             // Urgent actions sit above the cards: a failed unit should not be
             // something you find by clicking into a subject.
             Repeater {
-                model: root.urgent
+                model: root.urgentIds
                 Rectangle {
+                    // modelData is the id; `act` is the action behind it.
+                    // Not named `action` - that resolves to QtQuick's own
+                    // Action type and the bindings silently bind to it.
+                    readonly property var act: root.urgentFor(modelData)
+
                     width: parent.width
                     height: 52
                     radius: 6
@@ -117,7 +158,7 @@ Item {
                             radius: 5; color: style.badDot
                         }
                         SelectableText {
-                            text: modelData.title
+                            text: act.title
                             font.bold: true
                             font.pixelSize: 15
                             color: style.badText
@@ -131,7 +172,7 @@ Item {
                         // room, so it gets full opacity and a readable size.
                         SelectableText {
                             Layout.fillWidth: true
-                            text: modelData.why
+                            text: act.why
                             font.pixelSize: style.fontBody
                             color: style.badText
                             wrapMode: TextEdit.NoWrap

@@ -12,6 +12,47 @@ Item {
 
     property string subject: ""
     property var panels: []
+
+    /// The ids of the panels on show, reassigned only when that SET changes.
+    ///
+    /// The Repeater below must not be handed a new array every poll. Main
+    /// refreshes every 2 seconds and assigns a fresh `panels`; a Repeater
+    /// with an array model tears down and rebuilds every delegate whenever
+    /// the model is reassigned - which destroys the InfoButton you just
+    /// clicked, and the Popup that button owns. An info panel opened on a
+    /// subject page closed itself within two seconds, with no error.
+    ///
+    /// DiskPanel.qml already documents this teardown, as the reason its
+    /// progress bar must not animate. The connection to modals was missed:
+    /// the same rebuild that restarts an animation also deletes an open
+    /// dialog. The Monitor overview was never affected because its model is
+    /// a literal three-element list that is evaluated once.
+    ///
+    /// Keying on the id list keeps delegates alive across a poll, and the
+    /// readings still update - `summaryFor` reads `panels`, so the binding
+    /// re-evaluates without anything being destroyed.
+    /// Written by the handler below, never bound. A binding that both reads
+    /// and assigns this would be self-referential - the obvious way to write
+    /// it, and a loop.
+    property var panelIds: []
+
+    onPanelsChanged: {
+        var ids = []
+        for (var i = 0; i < root.panels.length; i++)
+            ids.push(root.panels[i].id)
+        // Only assign when the set actually differs. Handing over a fresh
+        // array with equal contents is still a reassignment, and the
+        // Repeater rebuilds on that alone.
+        if (ids.join("\u0000") !== root.panelIds.join("\u0000"))
+            root.panelIds = ids
+    }
+
+    function summaryFor(id) {
+        for (var i = 0; i < root.panels.length; i++)
+            if (root.panels[i].id === id)
+                return root.panels[i]
+        return null
+    }
     property var actions: []
     property var actionErrors: []
     property var memoryHistory: []
@@ -176,7 +217,7 @@ build-freshness panel exists to make exactly that visible."
                     rowSpacing: 12
 
                     Repeater {
-                        model: root.panels
+                        model: root.panelIds
 
                         Loader {
                             Layout.fillWidth: true
@@ -206,10 +247,12 @@ build-freshness panel exists to make exactly that visible."
                             // only redistributes height WITHIN a row.
                             Layout.fillHeight: true
 
-                            property var summary: modelData
+                            // modelData is the panel's id now, not the
+                            // summary - see panelIds above.
+                            property var summary: root.summaryFor(modelData)
 
                             sourceComponent: {
-                                switch (modelData.id) {
+                                switch (modelData) {
                                 case "memory":       return memoryComp
                                 case "failed-units": return unitsComp
                                 case "generations":  return gensComp
