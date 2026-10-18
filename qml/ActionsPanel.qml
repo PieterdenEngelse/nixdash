@@ -673,7 +673,13 @@ later overwrites, or fight Nix outright." }
                                     return act.needs_root ? "Run (asks for root)" : "Run"
                                 }
                                 onClicked: {
-                                    confirm.act = act
+                                    // confirm.action, not confirm.act: the
+                                    // Dialog's property kept its name. A
+                                    // scoped modelData->act rename caught
+                                    // this left-hand side too, so the click
+                                    // assigned a property nothing reads and
+                                    // the run never fired.
+                                    confirm.action = act
                                     confirm.open()
                                 }
                             }
