@@ -254,17 +254,35 @@ impl ActionProvider for RustTargets {
                 title: "rust-analyzer cannot resolve the standard library".into(),
                 subject: Subject::Rust,
                 kind: ActionKind::Nix,
+                // Same scoping as the two target actions above, and this
+                // one hid longer because the reading flips depending on
+                // where the service was started from: run inside a devShell
+                // that provides rust-src it reports present, run as the
+                // background service it reports absent. Same machine, same
+                // minute, opposite answers - and only the second is what
+                // this panel can see.
                 why: "rust-analyzer is installed, but the standard library \
-                      SOURCES are not. Every Vec, String and Option will show \
-                      as unresolved in your editor while rust-analyzer itself \
-                      runs perfectly."
+                      SOURCES are not visible to THIS environment - the \
+                      background service's, which is not the shell you edit \
+                      in. Where that is also your editor's environment, every \
+                      Vec, String and Option shows as unresolved while \
+                      rust-analyzer itself runs perfectly.\n\n\
+                      An editor started from a devShell that provides \
+                      rust-src is unaffected and will resolve std normally. \
+                      This panel cannot see into one, so check how you \
+                      actually launch your editor before acting on it."
                     .into(),
                 info: ActionInfo {
                     what: "Adds the standard library sources - the rust-src \
-                           component - and points RUST_SRC_PATH at them. \
-                           rust-analyzer reads these to resolve std; the \
-                           compiled standard library it already has is not \
-                           enough, because the IDE needs the source text.",
+                           component - to a dev shell, and points \
+                           RUST_SRC_PATH at them. rust-analyzer reads these \
+                           to resolve std; the compiled standard library it \
+                           already has is not enough, because the IDE needs \
+                           the source text.\n\n\
+                           Worth checking you need it: a shell that already \
+                           supplies rust-src makes this a no-op, and the \
+                           reading behind the suggestion is of the default \
+                           environment rather than of that shell.",
                     if_wrong: "This is easy to live with for a long time \
                                without diagnosing, because nothing fails: \
                                the LSP starts, runs, and simply reports std \
