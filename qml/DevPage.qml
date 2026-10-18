@@ -70,6 +70,16 @@ Item {
                     + "the section under the pointer as tab-separated text."
             }
 
+            // Same breakpoints as the Config page, so the two read alike.
+            //
+            // Sections share a row and every section in a row takes the row's
+            // height - see the long note on Layout.fillHeight in
+            // SubjectPage.qml. Without it a Qt Quick Layout CENTRES an item
+            // that cannot grow, so these three (three rows, six rows, and
+            // however many the dev shell has) sat at three different heights
+            // with ragged edges. Stacking them one per row fixed the ragged
+            // edges by giving up the row, which costs a screenful of
+            // scrolling for nothing.
             GridLayout {
                 width: parent.width
                 columns: root.width >= 1500 ? 3 : (root.width >= 900 ? 2 : 1)
@@ -82,6 +92,7 @@ Item {
                 // from what is on disk" are not neighbours.
                 ConfigSection {
                     Layout.fillWidth: true
+                    Layout.fillHeight: true
                     title: "Build freshness"
                     rows: [
                         { label: "Running build", value: root.val("rust-build", "deployed") === "yes"
@@ -106,6 +117,7 @@ Item {
 
                 ConfigSection {
                     Layout.fillWidth: true
+                    Layout.fillHeight: true
                     title: "Qt — WebAssembly"
                     rows: [
                         { label: "Browser UI built", value: root.val("qt-wasm", "built"),
@@ -129,6 +141,7 @@ Item {
                 // file the app owns, never the hand-written one beside it.
                 DevShellSection {
                     Layout.fillWidth: true
+                    Layout.fillHeight: true
                     apiBase: root.apiBase
                     onChanged: root.ranAction()
                 }

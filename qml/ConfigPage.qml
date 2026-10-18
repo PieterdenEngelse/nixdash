@@ -82,6 +82,12 @@ Item {
             // a single column of sections ran well past the window and the
             // page had to be scrolled to see settings that fit beside what is
             // already on screen. Same breakpoints as SubjectPage.
+            //
+            // Every child fills height as well as width, so sections sharing
+            // a row end at the same edge - see the note on the Loader in
+            // SubjectPage.qml. This page took the breakpoints from there and
+            // not the height fix, and the short sections beside
+            // SettingsSection and SystemSection floated mid-row for it.
             GridLayout {
                 width: parent.width
                 columns: root.width >= 1500 ? 3 : (root.width >= 900 ? 2 : 1)
@@ -90,6 +96,7 @@ Item {
 
                 ConfigSection {
                     Layout.fillWidth: true
+                    Layout.fillHeight: true
                     title: "NixOS"
                     rows: [
                         { label: "Current generation", value: root.val("generations", "current"),
@@ -136,6 +143,7 @@ kernel change." }] },
                 // with. They are found by completely different mechanisms.
                 ConfigSection {
                     Layout.fillWidth: true
+                    Layout.fillHeight: true
                     title: "Qt — what is running"
                     rows: [
                         { label: "Version in use", value: root.val("qt-runtime", "version"),
@@ -153,6 +161,7 @@ kernel change." }] },
 
                 ConfigSection {
                     Layout.fillWidth: true
+                    Layout.fillHeight: true
                     title: "Qt — what could build"
                     rows: [
                         { label: "qmake in use", value: root.val("qt", "qmake"),
@@ -167,6 +176,7 @@ kernel change." }] },
 
                 ConfigSection {
                     Layout.fillWidth: true
+                    Layout.fillHeight: true
                     title: "Rust"
                     rows: [
                         { label: "rustc", value: root.val("rust", "rustc"),
@@ -184,6 +194,7 @@ kernel change." }] },
                 SettingsSection {
                     id: ownSettings
                     Layout.fillWidth: true
+                    Layout.fillHeight: true
                     apiBase: root.apiBase
                     // A write makes a declared value differ from the running one,
                     // which is exactly when the Apply action appears.
@@ -195,6 +206,7 @@ kernel change." }] },
                 // beside the build readings it changes.
                 SystemSection {
                     Layout.fillWidth: true
+                    Layout.fillHeight: true
                     apiBase: root.apiBase
                     onChanged: root.ranAction()
                 }

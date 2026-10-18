@@ -272,6 +272,35 @@ list is currently empty — keep it that way.
 label, and an info button on the close control of an info panel would be a
 panel explaining how to leave itself.
 
+## Panel Layout
+
+**A `GridLayout` child that fills width fills height too.** A Qt Quick Layout
+*centres* an item that cannot grow rather than aligning it to the top of its
+cell, so in a row of sections with different row counts the short ones float
+mid-row and no edge lines up. `Layout.fillHeight: true` gives each item its
+row's height and squares off both edges — better than
+`Layout.alignment: Qt.AlignTop`, which lines the tops up and leaves the
+bottoms ragged. The reasoning in full is on the `Loader` in
+`qml/SubjectPage.qml`.
+
+There is no risk of stretching the grid itself: these grids sit in a `Column`
+or `ColumnLayout` sized to `implicitHeight`, so no row has spare vertical
+space to absorb and filling only redistributes height *within* a row.
+
+Ragged edges are never a reason to drop to one column. That trades a
+screenful of scrolling for something one property fixes, and the whole point
+of two and three columns is to read what fits beside what is already there.
+
+`hooks/qml-grid-heights.py` says so at the edit — a `PostToolUse` hook, and
+**advisory**: an item that should keep its natural height is a legitimate
+answer, which is why this is not a test like `qml_info.rs`. Run it over
+everything with `python3 hooks/qml-grid-heights.py --check qml/*.qml`.
+
+This rule lived only as a comment in `SubjectPage.qml` for two days, during
+which `DevPage.qml` was written without it and the gate passed — and
+`ConfigPage.qml` had copied the breakpoints from that same file without the
+height fix. A convention in one file's comments is not a convention.
+
 ## Info Panel Voice
 
 Info panels are written from the perspective of someone using the app. To
