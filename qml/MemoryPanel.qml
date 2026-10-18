@@ -6,6 +6,16 @@ Panel {
 
     Style { id: style }
 
+    /// Reach the palette through this inside a Text.
+    ///
+    /// Text and everything derived from it carry their OWN `style` property
+    /// - the Normal/Outline/Raised enum - and it shadows the id above. A
+    /// `style.textMuted` written inside a Text therefore resolves to a
+    /// QQuickText::TextStyle, yields undefined, and the colour silently
+    /// falls back instead of erroring. qml-check catches it; nothing else
+    /// does.
+    readonly property var theme: style
+
     /// [{at, value}] oldest first, for the sparkline. `at` is milliseconds
     /// since the Unix epoch.
     property var history: []
@@ -162,7 +172,8 @@ Panel {
                     required property var modelData
 
                     text: modelData.label
-                    color: style.textMuted
+                    // Not style.textMuted: inside a Text that is the enum.
+                    color: root.theme.textMuted
                     font.pixelSize: root.axisFont
                     // Centred on its tick, but clamped inside the frame so the
                     // oldest and newest labels cannot hang off the edge.
