@@ -70,6 +70,137 @@ Item {
                     + "the section under the pointer as tab-separated text."
             }
 
+            // Which change needs which build, as reference rather than
+            // reading: the rows below are static, not measured. They sit
+            // ABOVE the measured boards deliberately - "what do I run" is
+            // the question you arrive with, and "is it stale" is the one
+            // you check afterwards.
+            //
+            // Ordered the way the builds have to happen: installed, then
+            // service, then window. The long form is ~/docs/build2.md.
+            GridLayout {
+                width: parent.width
+                columns: root.width >= 1500 ? 3 : (root.width >= 900 ? 2 : 1)
+                columnSpacing: 14
+                rowSpacing: 14
+
+                ConfigSection {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    title: "1 · Changes what is installed"
+                    rows: [
+                        { label: "/etc/nixos", value: "nixos-rebuild switch",
+                          source: "the machine - needs root",
+                          what: "System configuration: services, the kernel, \
+anything outside your user environment.",
+                          why: "<b>home-manager switch will not apply it.</b> \
+Two different commands that both say 'switch'. This one reads /etc/nixos \
+and needs root; the other reads ~/.config/home-manager and does not. \
+Picking wrong costs the wait and changes nothing.",
+                          ifWrong: "nixdash never needs this for itself. It \
+appears as the config-drift action when something under /etc/nixos is newer \
+than the running system." },
+                        { label: "nix/, flake.nix", value: "home-manager switch",
+                          source: "then xfce4-panel -r if the icon changed",
+                          what: "What 'installed' means for nixdash: the \
+engine package, the UI package, the launcher and the service unit.",
+                          why: "Only a switch can apply these, by \
+definition - they are the definition. Everything else builds on the \
+generation they produce, which is why this category is first.",
+                          ifWrong: "A launcher or menu change also needs \
+xfce4-panel -r. New entries are not drawn live." }
+                    ]
+                }
+
+                ConfigSection {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    title: "2 · Measures or decides"
+                    rows: [
+                        { label: "engine/src/", value: "home-manager switch",
+                          source: "THEN the restart it prints",
+                          what: "Collectors, actions, severities, headlines, \
+the API - everything the background service computes.",
+                          why: "The service runs an <i>installed</i> binary, \
+so editing the tree changes nothing and cargo build does not help.",
+                          ifWrong: "<b>The restart is not optional.</b> A \
+switch installs a new engine and rewrites the unit, but leaves the old \
+process serving - and nothing says so. systemctl reports active, /health \
+answers, panels update, all from the old binary. Compare the unit's \
+ExecStart with /proc/&lt;MainPID&gt;/exe to be sure." },
+                        { label: "testing it", value: "NIXDASH_PORT=3199 …",
+                          source: "a second engine, beside the service",
+                          what: "Run ./target/debug/nixdash-engine on another \
+port and query that, instead of waiting fifteen minutes to find out.",
+                          why: "Never take :3100 from the service. Stopping \
+it blanks the app you are looking at, and a dev engine left holding that \
+port makes the service crash-loop invisibly behind it - /health keeps \
+answering, from the squatter." },
+                    ]
+                }
+
+                ConfigSection {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    title: "3 · Draws something"
+                    rows: [
+                        { label: "qml/, ui/src/", value: "cargo build -p nixdash-ui",
+                          source: "inside nix develop, then reopen the window",
+                          what: "Anything this window renders.",
+                          why: "QML is compiled INTO the binary, so the edit \
+reaches you in two steps: build, then reopen. A window already running \
+shows yesterday's UI indefinitely.",
+                          ifWrong: "Outside the dev shell the build dies on \
+'Could not find Qt' - QMAKE is only set inside it." },
+                        { label: "a NEW .qml file", value: "+ both build.rs",
+                          source: "ui/build.rs and ui-wasm/rust/build.rs",
+                          what: "A new QML file must be listed in both \
+resource lists, which are separate.",
+                          why: "Missing from one, it is simply absent from \
+that UI's bundle - and the symptom is a failed import, not a missing \
+file.",
+                          ifWrong: "The desktop UI can work perfectly while \
+the browser one fails to load, from the same edit." },
+                        { label: "after a switch", value: "rebuild to reclaim the icon",
+                          source: "the switch built the window too",
+                          what: "Build order when a change spans categories: \
+switch first, then cargo build.",
+                          why: "A switch builds the window from the same \
+tree, so building first compiles the same binary twice. It also stamps a \
+new generation, and the launcher starts whichever is newer - so the icon \
+runs the installed copy until you rebuild." }
+                    ]
+                }
+
+                ConfigSection {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    title: "4 · Just words"
+                    rows: [
+                        { label: "in engine/src/", value: "home-manager switch",
+                          source: "a sentence costs ~15 minutes",
+                          what: "Panel and stat explanations, and every \
+action's title, why and snippet. They are Rust string literals.",
+                          why: "Same recipe as any other engine change, \
+because that is where they live - the cost has nothing to do with the size \
+of the edit." },
+                        { label: "in qml/", value: "cargo build -p nixdash-ui",
+                          source: "~1 minute",
+                          what: "The chrome: InfoButton content in Main.qml \
+and ActionsPanel, the subject headings, Config rows.",
+                          why: "<b>The same sentence needs a different build \
+depending on which file it lives in.</b> Reword the Rust one, rebuild the \
+UI, see no change, and go hunting a bug that is not there." },
+                        { label: "comments in qml/", value: "cargo test --all",
+                          source: "four tests read qml/ as data",
+                          what: "qml_info, qml_modals, info_length and api \
+all scan the QML directory.",
+                          why: "A comment can fail a test with no code \
+changed, which is surprising the first time." }
+                    ]
+                }
+            }
+
             // Same breakpoints as the Config page, so the two read alike.
             //
             // Sections share a row and every section in a row takes the row's
