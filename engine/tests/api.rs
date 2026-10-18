@@ -155,6 +155,67 @@ async fn gc_action_is_always_offered_on_nixos() {
         .map(|a| a["id"].as_str().unwrap())
         .collect();
     assert!(ids.contains(&"gc-store"), "got {ids:?}");
+    assert!(ids.contains(&"gc-store-survey"), "got {ids:?}");
+
+    // The survey must come first. Both are Routine and `report` sorts with a
+    // stable sort, so provider order decides this - look-before-you-leap only
+    // reads that way if the looking is above the leaping.
+    let survey = ids.iter().position(|i| *i == "gc-store-survey").unwrap();
+    let delete = ids.iter().position(|i| *i == "gc-store").unwrap();
+    assert!(survey < delete, "survey must precede deletion, got {ids:?}");
+}
+
+/// The displayed command and the Run button must not disagree about risk.
+///
+/// This pair is the reason the split exists. The dry-run used to be the first
+/// line of the deletion's `command` while Run went straight to `-d`, so the
+/// safe-looking line sat directly above a destructive button. Each action now
+/// shows the single line it actually performs, and this test fails if either
+/// grows a second line or starts advertising the other's behaviour.
+#[tokio::test]
+async fn gc_commands_match_what_run_executes() {
+    let (_, body) = get(sampled(), "/api/actions").await;
+    let actions = body["actions"].as_array().unwrap();
+
+    for (id, arg) in [("gc-store-survey", "--dry-run"), ("gc-store", "-d")] {
+        let a = actions
+            .iter()
+            .find(|a| a["id"] == id)
+            .unwrap_or_else(|| panic!("{id} not offered"));
+
+        assert_eq!(a["run"]["program"], "nix-collect-garbage", "{id}");
+        assert_eq!(a["run"]["args"], serde_json::json!([arg]), "{id}");
+
+        // One line, so there is no second line for a reader to mistake for
+        // the step that happens first.
+        let command = a["command"].as_str().unwrap();
+        assert_eq!(
+            command,
+            format!("sudo nix-collect-garbage {arg}"),
+            "{id} command drifted from its argv"
+        );
+    }
+
+    // The destructive half must never again advertise a survey it does not do.
+    let delete = actions.iter().find(|a| a["id"] == "gc-store").unwrap();
+    assert!(
+        !delete["command"].as_str().unwrap().contains("--dry-run"),
+        "the deletion's command must not contain a dry-run"
+    );
+
+    // ...and the survey must never grow the flag that deletes.
+    let survey = actions
+        .iter()
+        .find(|a| a["id"] == "gc-store-survey")
+        .unwrap();
+    assert!(
+        !survey["run"]["args"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|a| a == "-d"),
+        "the survey must not pass -d"
+    );
 }
 
 /// The engine must never grow a way to execute what it suggests.
