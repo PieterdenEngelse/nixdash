@@ -130,7 +130,29 @@ Item {
                         { label: "Same Qt as desktop", value: root.val("qt-wasm", "versions_match"),
                           source: "" },
                         { label: "Emscripten expected", value: root.val("qt-wasm", "emcc_recommended"),
-                          source: "pinned by this Qt; see ~/Projects/qt6-wasm" },
+                          source: "pinned by this Qt; see ~/Projects/qt6-wasm",
+                          what: "The Emscripten version this Qt for \
+WebAssembly was built against, read out of Qt's own CMake helpers rather \
+than guessed.<br><br>\
+<b>Emscripten</b> is the toolchain that compiles C and C++ to WebAssembly - \
+<tt>emcc</tt> standing in for <tt>gcc</tt> or <tt>clang</tt>. It does more \
+than translate the code: it supplies the things a desktop toolkit assumes \
+are there and a browser tab does not have - a filesystem, a main loop, \
+threads, and the glue that lets Qt behave as though an operating system \
+were underneath it.",
+                          why: "Qt for WebAssembly is built against ONE \
+Emscripten release and pins it. Use a different one and the build usually \
+gets as far as linking before it fails, with an undefined symbol or an ABI \
+complaint - an error that names a symbol rather than a version, and sends \
+you to read your own code first.<br><br>\
+The same 4.0 series is usually tolerated; a different major is not.",
+                          ifWrong: "<b>This row is not a comparison and not \
+a fault.</b> It states what Qt wants, not what you have - nothing here \
+checks your emsdk against it.<br><br>\
+If yours differs, pin the nixpkgs carrying the matching emcc rather than \
+overriding Qt's check: the warning is load-bearing. <i>Qt for wasm</i> \
+above says which Qt this is, and both come from \
+<tt>~/Projects/qt6-wasm</tt>." },
                         { label: "Host Qt for codegen", value: root.val("qt-wasm", "host_env"),
                           source: "QT_HOST_PATH - moc/rcc that run natively" }
                     ]
