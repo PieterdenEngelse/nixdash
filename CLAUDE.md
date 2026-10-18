@@ -25,8 +25,10 @@ invisible visible**.
 # Engine dev server
 cd engine && RUST_LOG=info cargo run
 
-# Quality gate (must pass before committing)
-cargo fmt --all && cargo clippy --all-targets -- -D warnings && ./qml-check
+# Quality gate before committing. Tiered - see Collaboration Style.
+cargo fmt --all && cargo test --all        # always
+./qml-check                                # when qml/ changed
+cargo clippy --all-targets -- -D warnings  # when Rust CODE changed
 
 # Tests
 cargo test --all
@@ -62,8 +64,25 @@ systemctl --user restart nixdash-engine.service
   | `cargo clippy --all-targets` | `cargo clippy -p <crate>` | one crate moved |
   | the gate after every edit | the gate **once**, before a commit | always |
 
-  A full gate is 1–3 minutes of the machine at full tilt. Running it eight
-  times in a session is not diligence, it is noise with a cost attached.
+  **The gate is tiered, because clippy on this machine is not cheap.**
+  Measured on 2026-10-17: the full gate hit a ten-minute cap twice, and
+  clippy scoped to the engine alone still took **8m45s** for a change that
+  touched nothing but string literals. That is the laptop, not the work.
+
+  | changed | run |
+  |---|---|
+  | anything | `cargo fmt --all` and `cargo test --all` |
+  | `qml/` | also `./qml-check` |
+  | Rust **code paths** | also `cargo clippy --all-targets -- -D warnings` |
+  | only Rust strings, comments or docs | **skip clippy** — `cargo check` instead |
+
+  The last row is the loosening and it is deliberate: clippy lints code, and
+  a reworded `&'static str` has no code for it to lint. `cargo test --all`
+  still builds everything, so a change that does not compile is still caught
+  before a commit. If in doubt, run clippy — the rule exists to stop nine
+  minutes being spent proving a sentence is still a sentence, not to make
+  skipping it a habit.
+
   What is genuinely expensive is a `home-manager switch` (~15 min), so never
   reach for one just to see a change.
 - **Never put the UI on the user's screen.** No launching it into their
