@@ -662,10 +662,13 @@ later overwrites, or fight Nix outright." }
                             // snippet is runnable and something is stopping it.
                             Button {
                                 visible: !!act.run
-                                enabled: {
-                                    var r = root.resultFor(act.id)
-                                    return !(r && r.running)
-                                }
+                                // Never disabled to mean busy. A greyed
+                                // control reads as broken rather than
+                                // working, so a second press is refused in
+                                // the handler instead, and the label says
+                                // which state it is in. See 13e in
+                                // docs/layout-plan.md; the settings rows
+                                // already work this way.
                                 text: {
                                     var r = root.resultFor(act.id)
                                     if (r && r.running)
@@ -673,6 +676,15 @@ later overwrites, or fight Nix outright." }
                                     return act.needs_root ? "Run (asks for root)" : "Run"
                                 }
                                 onClicked: {
+                                    // Refusing the second press matters here
+                                    // beyond tidiness: each run is a real
+                                    // privileged execution, and two presses
+                                    // would mean two polkit prompts for one
+                                    // intent.
+                                    var r = root.resultFor(act.id)
+                                    if (r && r.running)
+                                        return
+
                                     // confirm.action, not confirm.act: the
                                     // Dialog's property kept its name. A
                                     // scoped modelData->act rename caught
