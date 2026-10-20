@@ -216,6 +216,56 @@ async fn gc_commands_match_what_run_executes() {
             .any(|a| a == "-d"),
         "the survey must not pass -d"
     );
+
+    // The flagless collection is the one that frees space while leaving every
+    // generation standing. If it ever grows -d it becomes a second nuclear
+    // button wearing the safe button's title, which is the original bug.
+    let free = actions.iter().find(|a| a["id"] == "gc-store-free").unwrap();
+    assert_eq!(free["run"]["program"], "nix-collect-garbage");
+    assert_eq!(free["run"]["args"], serde_json::json!([]));
+    assert_eq!(free["command"], "sudo nix-collect-garbage");
+}
+
+/// Trimming generations must never be the thing that deletes all of them.
+///
+/// `-d` keeps none, which is why this action exists; the whole point is the
+/// `+N`. A `run` that lost the `+` would delete the generation numbered N
+/// instead of keeping the last N, and the titles would still read the same.
+#[tokio::test]
+async fn the_generation_trim_keeps_rather_than_deletes_by_number() {
+    let (_, body) = get(sampled(), "/api/actions").await;
+    let actions = body["actions"].as_array().unwrap();
+
+    // Conditional on this machine having generations to trim, so its absence
+    // is not a failure - but when offered, it must be the keeping form.
+    let Some(a) = actions.iter().find(|a| a["id"] == "gc-generations-keep") else {
+        return;
+    };
+
+    assert_eq!(a["run"]["program"], "nix-env");
+    let args: Vec<&str> = a["run"]["args"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    assert_eq!(args[0], "-p", "the profile must be explicit, got {args:?}");
+    assert_eq!(args[2], "--delete-generations");
+    assert!(
+        args[3].starts_with('+'),
+        "without the + this deletes generation {} instead of keeping that many",
+        args[3]
+    );
+
+    // Same one-line equality the collection pair holds to.
+    assert_eq!(
+        a["command"].as_str().unwrap(),
+        format!("nix-env -p {} --delete-generations {}", args[1], args[3]),
+    );
+
+    // It is the user's own profile, so it must not ask for a password.
+    assert_eq!(a["run"]["elevate"], false);
+    assert_eq!(a["needs_root"], false);
 }
 
 /// The engine must never grow a way to execute what it suggests.
