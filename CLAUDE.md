@@ -399,7 +399,14 @@ which is why the comparison is against the generation link rather than the
 store path. Without this the icon kept launching the last switched-in build
 while a fresh one sat in the tree, and the two windows are indistinguishable.
 
-`home.nix` sets `systemd.user.startServices = "suggest"`, so home-manager
+**This repo contains no `home.nix`** — it ships `nix/hm-module.nix`, and the
+file that imports it lives outside the tree: `~/.config/home-manager/home.nix`
+(standalone home-manager, which is why the deploy command is `home-manager
+switch` and not `nixos-rebuild`). Looking for `home.nix` in the repo and
+finding nothing reads as the docs being wrong, which is why this says where
+it is.
+
+That file sets `systemd.user.startServices = "suggest"`, so home-manager
 prints the restart rather than running it — restarting user services
 automatically takes xfconf down and kills the Xfce panel on this machine.
 A changed service keeps running the **old** build until restarted, which the
