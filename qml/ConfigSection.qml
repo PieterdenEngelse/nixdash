@@ -42,6 +42,14 @@ Rectangle {
     /// none does not (InfoButton hides itself when it has nothing to say).
     property var rows: []
 
+    /// Explains the section as a whole, on the title line, for a tile whose
+    /// rows each make sense alone while the grouping is the part that needs
+    /// saying. Optional in the same way the rows are: set none of these and
+    /// the title has no button, exactly as before.
+    property string what: ""
+    property string why: ""
+    property string ifWrong: ""
+
     /// Reserved for the button column, so no text runs under it.
     readonly property int infoWidth: style.infoSize + 8
 
@@ -190,6 +198,24 @@ Rectangle {
             // which is every store path.
             wrapMode: TextEdit.Wrap
         }
+    }
+
+    // The section's own button, on the title line. Paragraph 0 is the title,
+    // so it is positioned the same way the rows below are: by asking the
+    // document where that paragraph starts, never by predicting it.
+    InfoButton {
+        x: root.width - col.x - width
+        y: {
+            var dependency = body.text
+            if (body.length === 0)
+                return col.y
+            var r = body.positionToRectangle(0)
+            return col.y + r.y + Math.max(0, (r.height - height) / 2)
+        }
+        title: root.title
+        what: root.what
+        why: root.why
+        ifWrong: root.ifWrong
     }
 
     // One per row that has something to explain, anchored to the row's own
