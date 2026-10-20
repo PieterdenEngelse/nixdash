@@ -123,7 +123,7 @@ sourced to <tt>pkgs.lld in the devShell</tt> or <tt>pkgs.qt6.env in your \
 flake's devShell</tt> is not installed at all - it exists only while you \
 are inside that shell, and fifteen minutes of switching will not change \
 it." },
-                        { label: "/etc/nixos", value: "nixos-rebuild switch",
+                        { label: "/etc/nixos", value: "sudo nixos-rebuild switch",
                           source: "the machine - needs root",
                           what: "System configuration: services, the kernel, \
 anything outside your user environment.",
@@ -201,12 +201,24 @@ shows yesterday's UI until reopened, and the browser version serves its last \
 build forever. The Qt for WebAssembly board below is what tells you, naming \
 the file that is ahead of the bundle."
                     rows: [
-                        { label: "qml/, ui/src/", value: "cargo build -p nixdash-ui",
-                          source: "inside nix develop, then reopen the window",
+                        { label: "many qml/ edits", value: "just watch",
+                          source: "no rebuild per edit - relaunches on save",
+                          what: "Runs this window with NIXDASH_QML_DIR set, so \
+it reads qml/ from disk rather than its compiled-in copy, and relaunches it \
+whenever a file there changes.",
+                          why: "The binary never changes, so there is nothing \
+to rebuild between edits - the loop is a save and a relaunch of about a \
+tenth of a second.",
+                          ifWrong: "<b>A NEW .qml file will render here while \
+being absent from both build.rs lists</b>, and the next real build - or the \
+browser - is where you would find out. <tt>just gate</tt> checks it." },
+                        { label: "qml/, ui/src/", value: "just desktop",
+                          source: "wraps the dev shell, builds, relaunches",
                           what: "Anything this window renders.",
                           why: "QML is compiled INTO the binary, so the edit \
 reaches you in two steps: build, then reopen. A window already running \
-shows yesterday's UI indefinitely.",
+shows yesterday's UI indefinitely. <tt>just watch</tt> above is the loop \
+that skips both.",
                           ifWrong: "Outside the dev shell the build dies on \
 'Could not find Qt' - QMAKE is only set inside it." },
                         { label: "a NEW .qml file", value: "+ both build.rs",
@@ -218,7 +230,7 @@ that UI's bundle - and the symptom is a failed import, not a missing \
 file.",
                           ifWrong: "The desktop UI can work perfectly while \
 the browser one fails to load, from the same edit." },
-                        { label: "the browser UI", value: "nix develop .#wasm … build.sh",
+                        { label: "the browser UI", value: "just browser",
                           source: "the SAME qml/, a second program",
                           what: "One qml/ directory is compiled into two \
 programs: this window and the browser UI. ui-wasm/build.sh builds the \
@@ -256,19 +268,24 @@ action's title, why and snippet. They are Rust string literals.",
                           why: "Same recipe as any other engine change, \
 because that is where they live - the cost has nothing to do with the size \
 of the edit." },
-                        { label: "in qml/", value: "cargo build -p nixdash-ui",
+                        { label: "in qml/", value: "just desktop",
                           source: "~1 minute",
                           what: "The chrome: InfoButton content in Main.qml \
 and ActionsPanel, the subject headings, Config rows.",
                           why: "<b>The same sentence needs a different build \
 depending on which file it lives in.</b> Reword the Rust one, rebuild the \
 UI, see no change, and go hunting a bug that is not there." },
-                        { label: "comments in qml/", value: "cargo test --all",
-                          source: "four tests read qml/ as data",
-                          what: "qml_info, qml_modals, info_length and api \
-all scan the QML directory.",
+                        { label: "comments in qml/", value: "just gate",
+                          source: "seven tests read qml/ as data",
+                          what: "api, info_length, qml_board_refs, \
+qml_colours, qml_command_lines, qml_info and qml_modals all scan the QML \
+directory.",
                           why: "A comment can fail a test with no code \
-changed, which is surprising the first time." }
+changed, which is surprising the first time.",
+                          ifWrong: "<tt>just gate</tt>, not <tt>cargo test \
+--all</tt>: that one builds the UI crate, which needs Qt and the dev shell, \
+so the slow gate would be running for the cheapest possible change. See \
+<tt>just --list</tt>." }
                     ]
                 }
             }

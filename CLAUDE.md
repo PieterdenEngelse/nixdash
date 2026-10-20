@@ -21,29 +21,54 @@ invisible visible**.
 
 ## Build, Test, and Development Commands
 
+**The `Justfile` is the one definition.** Every command below is a recipe, so
+this list cannot drift from what actually runs — it did, until phase 13f: two
+blocks here gave `cd ui && cargo build` and `cargo build -p nixdash-ui` for
+the same build.
+
 ```bash
-# Engine dev server
-cd engine && RUST_LOG=info cargo run
-
-# Quality gate before committing. Tiered - see Collaboration Style.
-cargo fmt --all && cargo test --all        # always
-./qml-check                                # when qml/ changed
-cargo clippy --all-targets -- -D warnings  # when Rust CODE changed
-
-# Tests
-cargo test --all
-
-# Desktop UI
-nix develop --command bash -c 'cd ui && cargo build'
-
-# Browser UI (separate toolchain: emcc + wasm32 Rust target)
-nix develop .#wasm --command bash ui-wasm/build.sh
-./ui-wasm/serve.sh                      # :8099
-
-# Deploy
-home-manager switch                     # then the restart it prints
-systemctl --user restart nixdash-engine.service
+nix develop --command just --list   # from outside the shell; `just` lives in it
 ```
+
+| recipe | what | cost |
+|---|---|---|
+| `just gate` | fmt, engine tests, `qml-check` — for `qml/`, docs, Rust strings | seconds |
+| `just gate-rust` | the above plus clippy — for Rust **code** paths | ~9 min |
+| `just gate-all` | everything including the UI crate, inside the dev shell | slow |
+| `just desktop` | build this window and run it against the engine on :3100 | seconds |
+| `just engine` | a second engine on :3199, beside the service | seconds |
+| `just browser` | rebuild the browser UI (emcc + wasm32 target) | minutes |
+| `just serve` | serve the browser UI on :8099 | — |
+| `just deploy` | `home-manager switch`, then the restart it prints | ~15 min |
+| `just watch` | relaunch the window on every `qml/` change — no rebuild per edit | seconds once |
+| `just which` | which binary the service is **actually** running | — |
+
+Two things the recipes deliberately do not hide. `just desktop` wraps `nix develop`
+because `QMAKE` is only set inside it; `just engine` does not, because the
+engine links no Qt. And `just deploy` is never the way to see a change —
+that is `just desktop`.
+
+The full command lines also appear on the Dev page, in "The lines in full",
+for pasting into a terminal that has no `just`.
+
+**QML without a rebuild.** `NIXDASH_QML_DIR=$PWD/qml ./target/debug/nixdash-ui`
+reads `qml/` from disk instead of the compiled-in resource bundle, so an edit
+needs no `cargo build` — relaunching the same binary is enough, which is what
+`just watch` loops. It works because `Main.qml` carries `import nixdash`: the
+Rust-defined `Dash` type is registered by cxx-qt at startup rather than living
+in the bundle. Unset, nothing changes.
+
+Relaunch rather than in-process reload: `cxx-qt-lib` 0.10 exposes `load` and
+`loadData` and no `clearComponentCache`, so re-reading QML inside a live
+engine would need a C++ shim, and a fresh process cannot leave half a
+reloaded object tree behind.
+
+**The trap it introduces**, and why `engine/tests/qml_registered.rs` now
+exists: in that mode a **new** `.qml` renders without being listed in
+`ui/build.rs` or `ui-wasm/rust/build.rs`, so the omission surfaces at the next
+real build, or only in the browser. The test fails on a file missing from
+either list, and on a list entry whose file is gone — what a rename leaves
+behind.
 
 ## Collaboration Style
 
@@ -71,10 +96,13 @@ systemctl --user restart nixdash-engine.service
 
   | changed | run |
   |---|---|
-  | anything | `cargo fmt --all` and `cargo test --all` |
-  | `qml/` | also `./qml-check` |
-  | Rust **code paths** | also `cargo clippy --all-targets -- -D warnings` |
-  | only Rust strings, comments or docs | **skip clippy** — `cargo check` instead |
+  | `qml/`, docs, or only Rust strings and comments | `just gate` |
+  | Rust **code paths** | `just gate-rust` |
+  | before a deploy or a release | `just gate-all` |
+
+  `just gate` is fmt, the engine tests and `qml-check`. It stops short of
+  `cargo test --all` on purpose: that builds the UI crate, which needs Qt and
+  the dev shell, and `gate-all` is where it belongs.
 
   The last row is the loosening and it is deliberate: clippy lints code, and
   a reworded `&'static str` has no code for it to lint. `cargo test --all`
@@ -165,8 +193,8 @@ bundle.
 - **Rust naming**: `snake_case` modules/functions, `SCREAMING_SNAKE_CASE`
   constants, `UpperCamelCase` types
 - **QML components**: `UpperCamelCase.qml` in `qml/`
-- **Linting**: `cargo fmt --all` + `cargo clippy --all-targets -- -D warnings`
-  must pass before a commit
+- **Linting**: the gate for what you changed must pass before a commit —
+  `just gate`, or `just gate-rust` when Rust code moved
 - **Commits**: conventional form — `type(scope): lowercase description`, e.g.
   `fix(engine): read symlink mtime, not its target`
 
@@ -388,7 +416,7 @@ For UI work there is a cheaper loop than a switch, and the panel icon follows
 it:
 
 ```bash
-nix develop --command bash -c 'cargo build -p nixdash-ui && ./target/debug/nixdash-ui'
+just desktop
 ```
 
 The menu entry and the panel launcher run a wrapper that starts **whichever

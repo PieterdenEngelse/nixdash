@@ -109,6 +109,9 @@
           pkg-config
           curl
           jq
+          # The Justfile is the one definition of every build command; see
+          # CLAUDE.md. From outside this shell: nix develop --command just <recipe>
+          just
         ]) ++ devshellExtras.packages;
 
         # Qt6Gui/Qt6OpenGL .prl files reference -lGLX and -lOpenGL, which live

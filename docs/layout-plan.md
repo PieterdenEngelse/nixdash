@@ -1,5 +1,23 @@
 # Layout and style alignment — plan
 
+## Status: complete
+
+| phase | landed | note |
+|---|---|---|
+| 13a Style singleton | `7310c30`, 2026-10-10 | **not** a singleton — cxx-qt 0.10's `QmlModule` cannot register one, so `pragma Singleton` loads as an error. It is a plain `QtObject` each component instantiates, which costs nothing for constants. The phase text below still prescribes the approach that failed. |
+| 13b Info button spec | `7310c30` | `qml/InfoButton.qml:93` keeps the spec identical to RERAG's. |
+| 13c Consolidate roles | `7310c30` | `Style.qml` holds roles, not colours. Duplicate hex values remain and are fine — they are distinct roles sharing a shade, `infoBg`/`infoBorder` being the spec itself. |
+| 13d Theme decision | `7310c30` | **Option A, dark.** The blocking call was made. |
+| 13e Control rhythm | the writable sections, then 2026-10-20 | `[label] [control] [info]` and "never greyed out to mean busy" were already in all three writable sections; `ActionsPanel`'s Run button was the last control disabled to mean working, and now refuses the second press in its handler instead. |
+| 13f Justfile | 2026-10-20 | `Justfile` at the repo root, `just` in the devShell. `CLAUDE.md` cites recipes rather than carrying command lines — it had eleven, two of which were the same build spelled differently. The two UI recipes are named `desktop` and `browser`, not the `ui` and `wasm` proposed below: one `qml/` builds two UIs, and `just ui` reads as unambiguous only to someone who already knows the crate is `nixdash-ui` — which is the knowledge the Dev page exists to not require. |
+
+Two "done when" criteria went unmet for ten days after the work itself
+landed, both of them tests: 13a asked for one enforcing that no colour is
+defined outside `Style.qml` (`engine/tests/qml_colours.rs`, 2026-10-20), and
+13f's argument — *prose in two files is how the quality gate went unrun* — was
+itself the thing left undone. A phase is not finished when the code is
+written; it is finished when something fails if the code regresses.
+
 Bringing nixdash's UI into line with the conventions in the RERAG repo. The
 repository layout already matches (README, CLAUDE.md, docs/); the gap is
 almost entirely in the interface.
