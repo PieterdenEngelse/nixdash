@@ -88,7 +88,41 @@ Item {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     title: "1 · Changes what is installed"
+                    what: "Edits that only take effect once something is \
+built and installed - and the board that answers which of the two \
+<i>switch</i> commands does it."
+                    why: "<b>Two different commands both say switch.</b> \
+<tt>nixos-rebuild switch</tt> reads <tt>/etc/nixos</tt> and needs root; \
+<tt>home-manager switch</tt> reads <tt>~/.config/home-manager</tt> and does \
+not. Neither reports that it was the wrong one: it rebuilds, succeeds, and \
+your change is still not there."
+                    ifWrong: "There is a third answer that is neither. A \
+setting that lives in a devShell is not installed at all - it exists only \
+inside <tt>nix develop</tt>, and no switch will ever apply it. Fifteen \
+minutes is the usual price of guessing instead of reading the ↳ line."
                     rows: [
+                        { label: "which switch?", value: "read the ↳ line",
+                          source: "Config page names where a setting lives",
+                          what: "Every row on the Config page carries a ↳ \
+line naming the file that declares it. That file decides the command - you \
+do not have to remember which layer a setting belongs to.",
+                          why: "<b>Three answers, not two:</b><br>\
+<table>\
+<tr><td>under <tt>/etc/nixos</tt>&nbsp;&nbsp;</td>\
+<td><tt>nixos-rebuild switch</tt> — includes \
+<tt>hardware-configuration.nix</tt>, which lives there</td></tr>\
+<tr><td><tt>nix/…</tt> or <tt>~/.config/home-manager</tt></td>\
+<td><tt>home-manager switch</tt></td></tr>\
+<tr><td>\"in the devShell\"</td>\
+<td><b>neither</b> — exit and re-enter <tt>nix develop</tt></td></tr>\
+</table>",
+                          ifWrong: "Only one provenance line spells its \
+command out; for the rest you read the path and apply the rule above.<br><br>\
+The devShell row is the one people switch for unnecessarily. A setting \
+sourced to <tt>pkgs.lld in the devShell</tt> or <tt>pkgs.qt6.env in your \
+flake's devShell</tt> is not installed at all - it exists only while you \
+are inside that shell, and fifteen minutes of switching will not change \
+it." },
                         { label: "/etc/nixos", value: "nixos-rebuild switch",
                           source: "the machine - needs root",
                           what: "System configuration: services, the kernel, \
@@ -100,7 +134,7 @@ Picking wrong costs the wait and changes nothing.",
                           ifWrong: "nixdash never needs this for itself. It \
 appears as the config-drift action when something under /etc/nixos is newer \
 than the running system." },
-                        { label: "nix/, flake.nix", value: "home-manager switch",
+                        { label: "nix/, flake.nix (not its devShell)", value: "home-manager switch",
                           source: "then xfce4-panel -r if the icon changed",
                           what: "What 'installed' means for nixdash: the \
 engine package, the UI package, the launcher and the service unit.",
@@ -116,6 +150,17 @@ xfce4-panel -r. New entries are not drawn live." }
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     title: "2 · Measures or decides"
+                    what: "Edits to the background service: what it reads, \
+what it concludes, and what it offers to do about it."
+                    why: "The service runs an <b>installed</b> binary, not \
+your tree, so editing it changes nothing until a switch - and then nothing \
+again until the restart. The window you are looking at is a separate \
+program, which is why a change here can be invisible while the UI looks \
+perfectly current."
+                    ifWrong: "Both failures here look like success. An \
+un-restarted service reports active and answers every request from the old \
+binary; a dev engine left on :3100 answers in the service's place while the \
+real one crash-loops behind it. Use another port and nothing is ambiguous."
                     rows: [
                         { label: "engine/src/", value: "home-manager switch",
                           source: "THEN the restart it prints",
@@ -142,7 +187,19 @@ answering, from the squatter." },
                 ConfigSection {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    title: "3 · Draws something"
+                    title: "3 · Draws something (twice)"
+                    what: "One <tt>qml/</tt> directory, compiled into two \
+programs: this window and the browser UI. Twice, because a change to what \
+is drawn has to be built into each of them separately."
+                    why: "QML is compiled INTO a binary here, not read from \
+disk, so nothing picks up an edit by itself - and the two builds are \
+unrelated. <tt>cargo build</tt> makes this window; only \
+<tt>ui-wasm/build.sh</tt> makes the browser one."
+                    ifWrong: "The failure is silence, not an error: each \
+program keeps rendering whatever was last compiled into it. A running window \
+shows yesterday's UI until reopened, and the browser version serves its last \
+build forever. The Qt for WebAssembly board below is what tells you, naming \
+the file that is ahead of the bundle."
                     rows: [
                         { label: "qml/, ui/src/", value: "cargo build -p nixdash-ui",
                           source: "inside nix develop, then reopen the window",
@@ -161,6 +218,21 @@ that UI's bundle - and the symptom is a failed import, not a missing \
 file.",
                           ifWrong: "The desktop UI can work perfectly while \
 the browser one fails to load, from the same edit." },
+                        { label: "the browser UI", value: "nix develop .#wasm … build.sh",
+                          source: "the SAME qml/, a second program",
+                          what: "One qml/ directory is compiled into two \
+programs: this window and the browser UI. ui-wasm/build.sh builds the \
+second.",
+                          why: "<b>Nothing else builds it.</b> Not cargo \
+build, not a switch. So every QML edit silently leaves the browser version \
+behind - it keeps serving whatever was last compiled, which looks identical \
+to working.",
+                          ifWrong: "The Qt for WebAssembly board below \
+reports this as <tt>stale</tt>, naming the file that is ahead of the build. \
+Leaving it stale costs nothing if you are not using the browser UI today; \
+not knowing is the part that bites.<br><br>\
+Separate toolchain - emcc and a wasm32 Rust target - so it needs its own \
+dev shell and takes several minutes." },
                         { label: "after a switch", value: "rebuild to reclaim the icon",
                           source: "the switch built the window too",
                           what: "Build order when a change spans categories: \
@@ -298,6 +370,45 @@ above says which Qt this is, and both come from \
                     apiBase: root.apiBase
                     onChanged: root.ranAction()
                 }
+            }
+
+            // Full width, outside the grid, because the lines are the point
+            // and they do not fit a third of the page: the longest is 111
+            // characters. Putting them in
+            // info panels was the other option and is worse - a command you
+            // have to open a dialog to read is a command you retype from
+            // memory instead.
+            //
+            // The boards above decide WHICH build; this one is the literal
+            // form of each. They stay short on purpose, so the two are not
+            // two copies of the same string.
+            ConfigSection {
+                id: commandLines
+                width: parent.width
+                height: commandLines.implicitHeight
+                title: "The lines in full"
+                what: "Each build above, as a line you can run as printed - \
+no assembly from a value and a provenance line."
+                why: "<tt>cargo build -p nixdash-ui</tt> alone fails: outside \
+the dev shell it dies on \"Could not find Qt\", because QMAKE is only set \
+inside it. The engine is the opposite - it needs no shell. That asymmetry is \
+not visible in a column that has room for the command but not its \
+prerequisite."
+                ifWrong: "A path here is this machine's. The repository is at \
+<tt>~/Projects/nixdash</tt>, and these assume the engine on :3100 is already \
+running - which it is, if the app is drawing this."
+                rows: [
+                    { label: "this window", value: "cd ~/Projects/nixdash && nix develop --command bash -c 'cargo build -p nixdash-ui && ./target/debug/nixdash-ui'",
+                      source: "3 · Draws something (twice) - builds and launches, seconds, against the running engine" },
+                    { label: "browser UI", value: "cd ~/Projects/nixdash && nix develop .#wasm --command bash ui-wasm/build.sh",
+                      source: "3 · Draws something (twice) - then ./ui-wasm/serve.sh, which serves :8099" },
+                    { label: "a second engine", value: "cd ~/Projects/nixdash && cargo build -p nixdash-engine && NIXDASH_PORT=3199 ./target/debug/nixdash-engine",
+                      source: "2 · Measures or decides - no dev shell needed; never takes :3100 from the service" },
+                    { label: "install, user", value: "home-manager switch",
+                      source: "1 · Changes what is installed - then the systemctl --user restart it prints" },
+                    { label: "install, system", value: "sudo nixos-rebuild switch",
+                      source: "1 · Changes what is installed - /etc/nixos; --flake is implied when its flake.nix exists" }
+                ]
             }
 
             // Only the actions these sections can act on - rebuilding the
