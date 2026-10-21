@@ -78,9 +78,17 @@ Item {
             //
             // Ordered the way the builds have to happen: installed, then
             // service, then window. The long form is ~/docs/build2.md.
+            //
+            // Four columns rather than the three the other grids use, because
+            // this grid holds exactly four sections and they are a sequence:
+            // 1, 2, 3, 4 read as steps, and at three columns step 4 dropped
+            // onto a row of its own, below a wide gap, where it read as an
+            // afterthought instead of the fourth of four. The ladder is 4, 2,
+            // 1 for the same reason - every rung divides four evenly, so no
+            // width leaves a short last row.
             GridLayout {
                 width: parent.width
-                columns: root.width >= 1500 ? 3 : (root.width >= 900 ? 2 : 1)
+                columns: root.width >= 1500 ? 4 : (root.width >= 900 ? 2 : 1)
                 columnSpacing: 14
                 rowSpacing: 14
 
@@ -88,61 +96,58 @@ Item {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     title: "1 · Changes what is installed"
-                    what: "Edits that only take effect once something is \
-built and installed - and the board that answers which of the two \
-<i>switch</i> commands does it."
+                    what: "<b>Installed means in a generation</b> - a built, \
+switched-in copy. An edit to any of these files changes nothing at all until \
+a switch makes a new one."
                     why: "<b>Two different commands both say switch.</b> \
-<tt>nixos-rebuild switch</tt> reads <tt>/etc/nixos</tt> and needs root; \
-<tt>home-manager switch</tt> reads <tt>~/.config/home-manager</tt> and does \
-not. Neither reports that it was the wrong one: it rebuilds, succeeds, and \
-your change is still not there."
-                    ifWrong: "There is a third answer that is neither. A \
-setting that lives in a devShell is not installed at all - it exists only \
-inside <tt>nix develop</tt>, and no switch will ever apply it. Fifteen \
-minutes is the usual price of guessing instead of reading the ↳ line."
+<tt>sudo nixos-rebuild switch</tt> reads <tt>/etc/nixos</tt>; \
+<tt>home-manager switch</tt> reads your own config and needs no root. \
+Neither reports having been the wrong one: it rebuilds, succeeds, and your \
+change is still not there."
+                    ifWrong: "The rows are keyed by <i>where the file is</i>, \
+not by what it configures. If you do not know where a setting lives, the \
+Config page prints the file under each reading, on the ↳ line - and that \
+file picks the row."
                     rows: [
-                        { label: "which switch?", value: "read the ↳ line",
-                          source: "Config page names where a setting lives",
-                          what: "Every row on the Config page carries a ↳ \
-line naming the file that declares it. That file decides the command - you \
-do not have to remember which layer a setting belongs to.",
-                          why: "<b>Three answers, not two:</b><br>\
-<table>\
-<tr><td>under <tt>/etc/nixos</tt>&nbsp;&nbsp;</td>\
-<td><tt>nixos-rebuild switch</tt> — includes \
-<tt>hardware-configuration.nix</tt>, which lives there</td></tr>\
-<tr><td><tt>nix/…</tt> or <tt>~/.config/home-manager</tt></td>\
-<td><tt>home-manager switch</tt></td></tr>\
-<tr><td>\"in the devShell\"</td>\
-<td><b>neither</b> — exit and re-enter <tt>nix develop</tt></td></tr>\
-</table>",
-                          ifWrong: "Only one provenance line spells its \
-command out; for the rest you read the path and apply the rule above.<br><br>\
-The devShell row is the one people switch for unnecessarily. A setting \
-sourced to <tt>pkgs.lld in the devShell</tt> or <tt>pkgs.qt6.env in your \
-flake's devShell</tt> is not installed at all - it exists only while you \
-are inside that shell, and fifteen minutes of switching will not change \
-it." },
                         { label: "/etc/nixos", value: "sudo nixos-rebuild switch",
-                          source: "the machine - needs root",
-                          what: "System configuration: services, the kernel, \
-anything outside your user environment.",
-                          why: "<b>home-manager switch will not apply it.</b> \
-Two different commands that both say 'switch'. This one reads /etc/nixos \
-and needs root; the other reads ~/.config/home-manager and does not. \
-Picking wrong costs the wait and changes nothing.",
+                          source: "the machine itself - needs root",
+                          what: "System configuration: the kernel, services, \
+users, anything outside your own session.",
+                          why: "<tt>home-manager switch</tt> cannot apply it \
+and will not say so - it rebuilds, succeeds, and the change is still not \
+there.",
                           ifWrong: "nixdash never needs this for itself. It \
 appears as the config-drift action when something under /etc/nixos is newer \
 than the running system." },
-                        { label: "nix/, flake.nix (not its devShell)", value: "home-manager switch",
-                          source: "then xfce4-panel -r if the icon changed",
-                          what: "What 'installed' means for nixdash: the \
-engine package, the UI package, the launcher and the service unit.",
-                          why: "Only a switch can apply these, by \
-definition - they are the definition. Everything else builds on the \
-generation they produce, which is why this category is first.",
+                        { label: "~/.config/home-manager", value: "home-manager switch",
+                          source: "your session - no root",
+                          what: "Your user environment, declared outside this \
+repository: home.nix and the modules it imports.",
+                          why: "The half of the machine that is yours - \
+packages, user services, the panel. nixdash's own module is imported from \
+here, which is why this command installs nixdash too.",
+                          ifWrong: "It prints a <tt>systemctl --user \
+restart</tt> rather than running it, and a changed service keeps serving the \
+old binary until you run it." },
+                        { label: "nix/, flake.nix", value: "home-manager switch",
+                          source: "nixdash itself - engine, UI, launcher, unit",
+                          what: "What installed means for nixdash: the engine \
+and UI packages, the launcher, and the service unit.",
+                          why: "The same command as the row above, because \
+one switch builds both: your config imports this repo's module by path.",
                           ifWrong: "A launcher or menu change also needs \
-xfce4-panel -r. New entries are not drawn live." }
+<tt>xfce4-panel -r</tt>. New entries are not drawn live." },
+                        { label: "a devShell", value: "neither",
+                          source: "not installed - exit and re-enter nix develop",
+                          what: "A package or variable that exists only \
+inside <tt>nix develop</tt>: lld, the Qt environment, anything under \
+<tt>devShells</tt> in flake.nix.",
+                          why: "<b>No switch will ever apply it.</b> This is \
+the answer people pay fifteen minutes to learn, by switching for a setting \
+that was never installed in the first place.",
+                          ifWrong: "Leave the shell and enter it again. If a \
+reading still disagrees with the file, the shell you are in predates the \
+change." }
                     ]
                 }
 
@@ -201,7 +206,7 @@ shows yesterday's UI until reopened, and the browser version serves its last \
 build forever. The Qt for WebAssembly board below is what tells you, naming \
 the file that is ahead of the bundle."
                     rows: [
-                        { label: "many qml/ edits", value: "just watch",
+                        { label: "many qml/ edits", value: "just watch-desktop",
                           source: "no rebuild per edit - relaunches on save",
                           what: "Runs this window with NIXDASH_QML_DIR set, so \
 it reads qml/ from disk rather than its compiled-in copy, and relaunches it \
@@ -217,8 +222,8 @@ browser - is where you would find out. <tt>just gate</tt> checks it." },
                           what: "Anything this window renders.",
                           why: "QML is compiled INTO the binary, so the edit \
 reaches you in two steps: build, then reopen. A window already running \
-shows yesterday's UI indefinitely. <tt>just watch</tt> above is the loop \
-that skips both.",
+shows yesterday's UI indefinitely. <tt>just watch-desktop</tt> above is the \
+loop that skips both.",
                           ifWrong: "Outside the dev shell the build dies on \
 'Could not find Qt' - QMAKE is only set inside it." },
                         { label: "a NEW .qml file", value: "+ both build.rs",
@@ -238,7 +243,11 @@ second.",
                           why: "<b>Nothing else builds it.</b> Not cargo \
 build, not a switch. So every QML edit silently leaves the browser version \
 behind - it keeps serving whatever was last compiled, which looks identical \
-to working.",
+to working.<br><br>\
+<tt>just watch-browser</tt> is this on a loop: it rebuilds on every save and \
+prints each build in the terminal, and the served page reloads itself when \
+one lands. Minutes per build, so it is a pane to glance at rather than wait \
+on.",
                           ifWrong: "The Qt for WebAssembly board below \
 reports this as <tt>stale</tt>, naming the file that is ahead of the build. \
 Leaving it stale costs nothing if you are not using the browser UI today; \

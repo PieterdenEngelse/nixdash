@@ -40,6 +40,11 @@ Rectangle {
     /// [{ label, value, source }], plus optional what/why/ifWrong/sections -
     /// a row carrying any of those grows an info button, and one carrying
     /// none does not (InfoButton hides itself when it has nothing to say).
+    ///
+    /// A row may also carry `buildId`, which grows a Run button beside its
+    /// info button. The id names something the app can run; this component
+    /// never holds a command, and the signal below carries the id and nothing
+    /// else - see the note on runRequested.
     property var rows: []
 
     /// Explains the section as a whole, on the title line, for a tile whose
@@ -53,13 +58,68 @@ Rectangle {
     /// Reserved for the button column, so no text runs under it.
     readonly property int infoWidth: style.infoSize + 8
 
+    /// Width a Run button takes, reserved only on a section that has one.
+    /// Sections without runnable rows keep exactly the text width they had.
+    readonly property int runWidth: 54
+
+    readonly property bool hasRuns: {
+        for (var i = 0; i < root.rows.length; i++)
+            if (root.rows[i].buildId)
+                return true
+        return false
+    }
+
+    /// The last run's outcome in words, set by the page. Empty hides it.
+    property string resultText: ""
+    property bool resultOk: true
+
+    /// Per-id state supplied by the page: { running, ok, text }.
+    ///
+    /// Owned by the page rather than by this component, because this one is a
+    /// reference board used on several pages and holds no HTTP of its own.
+    property var runState: ({})
+
+    /// A row's Run button was pressed. Carries the ROW'S ID, never a command:
+    /// what gets executed is fixed where the id is defined, and the page that
+    /// handles this signal posts the id alone.
+    signal runRequested(string buildId)
+    /// A row's Stop button was pressed. Only rows carrying `stoppable` have
+    /// one - a command that finishes has nothing to stop.
+    signal stopRequested(string buildId)
+
+    /// Bumped whenever the text block relays out, and read by every info
+    /// button's `y` so the button follows its row.
+    ///
+    /// The buttons are positioned by asking the document where a paragraph
+    /// starts, and that answer changes with WIDTH: a tile narrow enough to
+    /// wrap a provenance line pushes every row below it down a line. The
+    /// bindings already re-ran on `text` and `length`, and neither of those
+    /// moves when the column width does - so the first evaluation, taken
+    /// before the layout had settled on a width, was the one that stuck.
+    /// Every button then sat at the unwrapped pitch, drifting further above
+    /// its own row with each wrap above it: three columns hid this because
+    /// the tiles were wide enough that little wrapped, and four columns made
+    /// it obvious.
+    ///
+    /// A counter rather than reading `contentHeight` inside the binding,
+    /// because the binding has to re-run AFTER the relayout and not during
+    /// it - the signal is the only thing that orders those correctly.
+    property int relayout: 0
+
+    Connections {
+        target: body
+        function onContentHeightChanged() { root.relayout++ }
+        function onWidthChanged() { root.relayout++ }
+    }
+
     /// Which paragraph of the document each row's first line is.
     ///
-    /// Not the row index: paragraph 0 is the title, and a row with a
-    /// provenance pointer occupies two paragraphs rather than one.
+    /// Not the row index: paragraph 0 is the title, paragraph 1 the blank
+    /// line under it, and a row with a provenance pointer occupies two
+    /// paragraphs rather than one.
     readonly property var rowParagraph: {
         var out = []
-        var p = 1
+        var p = 2
         for (var i = 0; i < root.rows.length; i++) {
             out.push(p)
             // value, its provenance if any, and the blank line that follows
@@ -125,6 +185,16 @@ Rectangle {
         var h = "<div><span style='font-family:sans-serif; font-size:14px; "
               + "font-weight:bold; color:" + style.textStrong + "'>"
               + body.esc(root.title) + "</span></div>"
+        // A blank line under the title, and it is load-bearing rather than
+        // taste: the info buttons are 24px because a fingertip needs that
+        // much, and a line of text is 16-17px. Buttons are centred on their
+        // own line, so two on ADJACENT lines cannot both fit - measured at
+        // 7px of overlap between the section's button and the first row's,
+        // which put the title's hit area on top of the first row's. Rows are
+        // three lines apart already (value, provenance, blank), so this was
+        // the only colliding pair. It also makes the title separate from the
+        // rows the same way the rows separate from each other.
+        h += "<div>&nbsp;</div>"
         for (var i = 0; i < root.rows.length; i++) {
             var r = root.rows[i]
             var label = String(r.label)
@@ -185,7 +255,7 @@ Rectangle {
         // proportional font makes &nbsp; padding line up to nothing.
         SelectableText {
             id: body
-            width: parent.width - root.infoWidth
+            width: parent.width - root.infoWidth - (root.hasRuns ? root.runWidth : 0)
             text: root.rowsHtml()
             textFormat: TextEdit.RichText
             font.family: "monospace"
@@ -198,6 +268,19 @@ Rectangle {
             // which is every store path.
             wrapMode: TextEdit.Wrap
         }
+
+        // What the last run actually did, in full. The dot on the button says
+        // only whether it worked; the reason it did not - a held port, a
+        // dismissed polkit prompt, the log file to read - needs words, and
+        // this is where they go.
+        SelectableText {
+            visible: root.resultText !== ""
+            width: parent.width - root.infoWidth
+            text: root.resultText
+            wrapMode: TextEdit.Wrap
+            font.pixelSize: style.fontBody
+            color: root.resultOk ? style.okText : style.badText
+        }
     }
 
     // The section's own button, on the title line. Paragraph 0 is the title,
@@ -207,6 +290,7 @@ Rectangle {
         x: root.width - col.x - width
         y: {
             var dependency = body.text
+            var moved = root.relayout
             if (body.length === 0)
                 return col.y
             var r = body.positionToRectangle(0)
@@ -218,6 +302,79 @@ Rectangle {
         ifWrong: root.ifWrong
     }
 
+    // One per runnable row, sitting just left of that row's info button and
+    // positioned the same way: by asking the document where the row's
+    // paragraph starts, never by predicting it.
+    //
+    // A Repeater of its own rather than an item inside the info Repeater,
+    // because most rows have no button and an empty placeholder in every row
+    // of every section would still reserve its width.
+    Repeater {
+        model: root.rows
+
+        Item {
+            visible: !!modelData.buildId
+            width: root.runWidth
+            height: run.height
+            x: root.width - col.x - root.infoWidth - width
+            // Same dependency reads as the info buttons below: text, relayout
+            // and length are touched explicitly so this re-runs when the
+            // block reflows, which a binding over a function call alone does
+            // not notice.
+            y: {
+                var dependency = body.text
+                var moved = root.relayout
+                var len = body.length
+                var o = root.offsets[root.rowParagraph[index]]
+                if (o === undefined || o > len)
+                    return col.y + index * 20
+                var r = body.positionToRectangle(o)
+                return col.y + r.y + Math.max(0, (r.height - height) / 2)
+            }
+
+            readonly property var st: root.runState[modelData.buildId]
+                                      ? root.runState[modelData.buildId] : ({})
+
+            Button {
+                id: run
+                anchors.right: parent.right
+                // Full width of the reserved column, so the hit area is the
+                // whole of it: a fingertip on a trackpad is the only pointer
+                // this machine has, and style.infoSize is 24 for the same
+                // reason.
+                width: parent.width
+                height: style.infoSize
+                // "Stop" only where stopping means something, and only once
+                // there is something to stop - a button that offers to stop a
+                // thing that is not running would be a reading the app never
+                // took.
+                readonly property bool stopping: modelData.stoppable
+                                                 && root.runState[modelData.buildId]
+                                                 && root.runState[modelData.buildId].up
+                text: parent.st.running ? "…" : (stopping ? "Stop" : "Run")
+                enabled: !parent.st.running
+                font.pixelSize: style.fontBody
+                onClicked: stopping ? root.stopRequested(modelData.buildId)
+                                    : root.runRequested(modelData.buildId)
+
+                // The outcome, as a dot rather than a word: there is no room
+                // for a sentence here and the sentence belongs in the result
+                // line under the board, which says what actually happened.
+                Rectangle {
+                    visible: parent.parent.st.text !== undefined
+                             && !parent.parent.st.running
+                    width: 6
+                    height: 6
+                    radius: 3
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.left: parent.left
+                    anchors.leftMargin: 4
+                    color: parent.parent.st.ok ? style.okDot : style.badDot
+                }
+            }
+        }
+    }
+
     // One per row that has something to explain, anchored to the row's own
     // line in the document. A sibling of the Column rather than a child of
     // it: the Column stacks its children, and these have to sit beside the
@@ -227,13 +384,15 @@ Rectangle {
 
         InfoButton {
             x: root.width - col.x - width
-            // body.text and body.length are read explicitly so this re-runs
-            // when the block relays out - a binding over a function call
-            // alone does not notice that the rows moved. A row whose
+            // body.text, root.relayout and body.length are read explicitly
+            // so this re-runs when the block relays out - a binding over a
+            // function call alone does not notice that the rows moved, and
+            // `text` alone does not notice that the WIDTH moved. A row whose
             // paragraph does not exist yet parks on an estimated pitch
             // instead of asking the document for a position it does not have.
             y: {
                 var dependency = body.text
+                var moved = root.relayout
                 var len = body.length
                 var o = root.offsets[root.rowParagraph[index]]
                 if (o === undefined || o > len)
