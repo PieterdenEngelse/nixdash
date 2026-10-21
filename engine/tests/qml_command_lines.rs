@@ -79,17 +79,45 @@ fn repo() -> &'static Path {
 /// and this Justfile quotes several, explaining why they are not used - can
 /// never make the page's copy look defined.
 ///
-/// One global substitution per parameter name, which is sound while the names
-/// are unique across recipes - `port` is the only one today.
+/// Each recipe's parameters are resolved in ITS OWN body, which is the whole
+/// subtlety here. This was one global substitution per parameter name, sound
+/// only while no two recipes shared a parameter name - and the comment saying
+/// so named `port` as the only one. Three recipes take `port` now
+/// (`watch-browser`, `engine`, `serve`), and the global pass resolved every
+/// `{{ port }}` in the file to the default of whichever recipe appeared
+/// FIRST. So `engine`'s body came out as `NIXDASH_PORT=8099` - watch-browser's
+/// default, from eighty lines earlier - and the Dev page's correct `3199`
+/// was reported as a command that no recipe defines.
+///
+/// The failure pointed at the page, which was right, and at a recipe that
+/// existed and matched. Scoping the substitution is what makes the two agree
+/// again, and it cannot drift back: a fourth recipe taking `port` changes
+/// nothing now.
 fn justfile() -> (Vec<String>, Vec<String>) {
     let text = fs::read_to_string(repo().join("Justfile")).expect("Justfile should be readable");
     let mut names = Vec::new();
-    let mut resolved = text.clone();
+    let mut bodies: Vec<String> = Vec::new();
+    // Parameters of the recipe whose body we are currently inside.
+    let mut params: Vec<(String, String)> = Vec::new();
 
     for line in text.lines() {
+        // Indented: a body line of the recipe last seen. A leading `@`
+        // suppresses echo in just and is not part of the command.
+        if line.starts_with(char::is_whitespace) {
+            let body = line.trim().trim_start_matches('@');
+            if body.is_empty() || body.starts_with('#') {
+                continue;
+            }
+            let mut body = body.to_string();
+            for (param, default) in &params {
+                body = body.replace(&format!("{{{{ {param} }}}}"), default);
+            }
+            bodies.push(body);
+            continue;
+        }
         // A recipe line starts at column 0 and ends in a colon:
         // `name:` or `name param="default":`
-        if line.starts_with(char::is_whitespace) || line.starts_with('#') {
+        if line.starts_with('#') {
             continue;
         }
         let Some((head, _)) = line.split_once(':') else {
@@ -103,22 +131,13 @@ fn justfile() -> (Vec<String>, Vec<String>) {
             continue;
         }
         names.push(name.to_string());
+        params.clear();
         for part in parts {
             if let Some((param, rest)) = part.split_once("=\"") {
-                let default = rest.trim_end_matches('"');
-                resolved = resolved.replace(&format!("{{{{ {param} }}}}"), default);
+                params.push((param.to_string(), rest.trim_end_matches('"').to_string()));
             }
         }
     }
-
-    // Body lines only: indented, not a comment, not blank. A leading `@`
-    // suppresses echo in just and is not part of the command.
-    let bodies = resolved
-        .lines()
-        .filter(|l| l.starts_with(char::is_whitespace))
-        .map(|l| l.trim().trim_start_matches('@').to_string())
-        .filter(|l| !l.is_empty() && !l.starts_with('#'))
-        .collect();
 
     (names, bodies)
 }
