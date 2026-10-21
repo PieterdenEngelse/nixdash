@@ -107,6 +107,16 @@ fn build_stamp(utc: i64) -> String {
 /// cxx-qt declares the QML files and `src/`. So this is "when the build
 /// script last ran", not "when you last typed cargo build" - which is the
 /// honest answer anyway: an untouched tree produces the same binary.
+///
+/// It is also the START of that build and not its end, because a build
+/// script runs before anything is compiled. The desktop build makes that
+/// gap look like nothing; the wasm one does not, where an emcc link of
+/// several minutes leaves the stamp reading earlier than the bundle's own
+/// mtime by exactly that long. A fresh browser build therefore looks stale
+/// next to the file it just wrote, and the two numbers disagreeing is
+/// correct rather than a fault. The About panel says "build started" for
+/// this reason - if that label ever drifts back to "built", this is the
+/// paragraph explaining why it should not.
 fn emit_build_date() {
     let utc = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

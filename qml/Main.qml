@@ -15,20 +15,15 @@ ApplicationWindow {
     visible: true
     title: "nixdash"
 
-    /// Size for the header's chrome text: the two tabs, and the About link
-    /// beside them. Six pixels up from the inherited font rather than a
-    /// literal, so it keeps its distance if that font changes - the default
-    /// here is whatever Gtk/FontName says, "Sans 8" on this machine, which
-    /// is about 11px at 96dpi, putting this at roughly 17.
+    /// Size for the header's chrome text: the three tabs, the About link
+    /// beside them, and the version string at the far end.
     ///
-    /// It was +2 first and that was too small to notice, which is the whole
-    /// argument for the offset living in one named place.
-    ///
-    /// The guard is not decoration. `font.pixelSize` reads -1 when the font
-    /// it resolved was specified in POINTS, which is exactly how a
-    /// Gtk/FontName arrives - without it this would be a 1px header.
-    readonly property int chromeFont:
-        (root.font.pixelSize > 0 ? root.font.pixelSize : 11) + 6
+    /// It was `root.font.pixelSize + 6` - the inherited platform font plus an
+    /// offset - and that is exactly the thing that cannot be inherited here,
+    /// because the browser build has no desktop to inherit from. `Style`
+    /// carries the number and the measurements; this name is what the five
+    /// use sites below read.
+    readonly property int chromeFont: style.fontChrome
 
     // Every colour in the app comes from here. Not a singleton: cxx-qt 0.10
     // cannot register one, so each component instantiates its own - see
@@ -263,10 +258,16 @@ ApplicationWindow {
             anchors.rightMargin: 10
             spacing: 6
 
+            // Both header Buttons carry the size explicitly for the reason
+            // Style.fontChrome documents: a Control with no font of its own
+            // takes the platform's, and the browser build has no platform to
+            // take it from - this one rendered at 10px on the desktop and
+            // 16px in the tab.
             Button {
                 text: "‹"
                 visible: root.subject !== ""
                 flat: true
+                font.pixelSize: root.chromeFont
                 onClicked: root.subject = ""
             }
 
@@ -373,18 +374,25 @@ browser and contacts that site, like any other link." }
                 // onClicked per button, not onCurrentIndexChanged: clicking
                 // the tab you are already on must still return to its root,
                 // and an index that does not change fires no signal.
+                //
+                // 90 is the width the three have always had, and equal
+                // widths are the point of it - but as a floor now rather than
+                // a ceiling. Pinned, a tab clipped its own label the moment
+                // the text outgrew it: at the browser's 22px header "Monitor"
+                // rendered as "Moni...", in the one place that names what the
+                // tab does.
                 TabButton {
-                    text: "Monitor"; width: 90
+                    text: "Monitor"; width: Math.max(90, implicitWidth)
                     font.pixelSize: root.chromeFont
                     onClicked: { root.tab = "monitor"; root.subject = "" }
                 }
                 TabButton {
-                    text: "Config"; width: 90
+                    text: "Config"; width: Math.max(90, implicitWidth)
                     font.pixelSize: root.chromeFont
                     onClicked: { root.tab = "config"; root.subject = "" }
                 }
                 TabButton {
-                    text: "Dev"; width: 90
+                    text: "Dev"; width: Math.max(90, implicitWidth)
                     font.pixelSize: root.chromeFont
                     onClicked: { root.tab = "dev"; root.subject = "" }
                 }
@@ -494,7 +502,7 @@ platform support</a>" }
                 Layout.maximumWidth: 260
             }
 
-            Button { text: "Refresh"; onClicked: root.refresh() }
+            Button { text: "Refresh"; font.pixelSize: root.chromeFont; onClicked: root.refresh() }
             // The name promises more than it does, so it needs saying: this
             // re-reads the engine, it does not re-measure the machine.
             InfoButton {
@@ -601,18 +609,23 @@ everything here will look untouched." }
 
             InfoButton {
                 title: "About"
-                what: "Opens a panel naming this window's <b>version</b>, the \
-<b>date it was built</b>, and the address it reads the app's background \
+                what: "Opens a panel naming this window's <b>version</b>, \
+when its <b>build started</b>, and the address it reads the app's background \
 service from."
-                why: "The build date is the only thing that tells two of these \
-windows apart - the version number is <tt>0.1.0</tt> in every build ever \
-made. It is how you check that the window in front of you contains a change \
-you just made, rather than being an older one left open behind it."
-                ifWrong: "A date older than your last rebuild means this \
-window is a previous build still running: close it and start it again, \
-because nothing in a running window updates itself. The background service \
-is a separate program and can be a different build again, which the panel \
-also names - that is usually why a change seems not to have taken."
+                why: "The build stamp is the only thing that tells two of \
+these windows apart - the version number is <tt>0.1.0</tt> in every build \
+ever made. It is how you check that the window in front of you contains a \
+change you just made, rather than being an older one left open behind it."
+                ifWrong: "<b>It is when the build started, not when it \
+finished.</b> The stamp is baked in by the build script, which runs before \
+anything is compiled - so a build that takes minutes reads minutes earlier \
+than the files it produced. The browser UI is where this shows: an emcc link \
+of eight minutes leaves a fresh bundle looking eight minutes stale.<br><br>\
+A stamp older than your last rebuild by more than that means this window is \
+a previous build still running: close it and start it again, because nothing \
+in a running window updates itself. The background service is a separate \
+program and can be a different build again, which the panel also names - \
+that is usually why a change seems not to have taken."
             }
 
             // Which build this window is - and ordinary selectable text now.
@@ -672,7 +685,7 @@ engine reads the system, this window renders it."
                 wrapMode: TextEdit.Wrap
             }
 
-            // Version and date describe THIS window, baked in at compile
+            // Version and stamp describe THIS window, baked in at compile
             // time - see ui/build_date.rs. The engine is a separate binary
             // and can be a different build entirely, which is the usual
             // reason a change does not show up; the address is here so the
@@ -686,7 +699,15 @@ engine reads the system, this window renders it."
                 SelectableText { text: dash.version; font.pixelSize: style.fontBody }
                 // Amsterdam, not UTC - the EU rule is hardcoded in
                 // ui/build_date.rs, which is the only zone this shows.
-                SelectableText { text: "built";    font.pixelSize: style.fontBody }
+                //
+                // "build started", not "built": the stamp comes from the
+                // build script, which cargo runs BEFORE compiling, so it
+                // records the start and not the finish. Harmless on the
+                // desktop side, where the gap is seconds. On the browser
+                // side an emcc link runs for minutes and the label read as
+                // a bundle that was already out of date the moment it
+                // landed - which is the misreading this wording removes.
+                SelectableText { text: "build started"; font.pixelSize: style.fontBody }
                 SelectableText {
                     text: dash.built + "  (Amsterdam)"
                     font.pixelSize: style.fontBody
@@ -709,10 +730,11 @@ engine reads the system, this window renders it."
                 textFormat: TextEdit.RichText
                 wrapMode: TextEdit.Wrap
                 font.pixelSize: style.fontBody
-                text: "<b>version</b> is the app's own version. <b>built</b> \
-is when this window's build was produced, in Amsterdam time. <b>engine</b> \
-is the address this window reads from, marked <i>unreachable</i> when \
-nothing answers there."
+                text: "<b>version</b> is the app's own version. \
+<b>build started</b> is when this window's build began, in Amsterdam time - \
+the start and not the finish, because the stamp is written before anything \
+is compiled. <b>engine</b> is the address this window reads from, marked \
+<i>unreachable</i> when nothing answers there."
             }
 
             // Inline, not behind an info button. An About dialog that needs
@@ -724,12 +746,16 @@ nothing answers there."
                 textFormat: TextEdit.RichText
                 wrapMode: TextEdit.Wrap
                 font.pixelSize: style.fontBody
-                text: "<b>Why the date is the useful line.</b> There is no \
-other way to tell which build this is. A store path's timestamp is pinned to \
-the epoch by design, and when a process started says when you opened the \
-window - not when its binary was made. So <b>built</b> is the only answer to \
-\"is this the code I just wrote?\", which is the question that costs an \
-afternoon when two identical-looking windows are hours apart.<br><br>\
+                text: "<b>Why the stamp is the useful line.</b> There is \
+no other way to tell which build this is. A store path's timestamp is pinned \
+to the epoch by design, and when a process started says when you opened the \
+window - not when its binary was made. So <b>build started</b> is the only \
+answer to \"is this the code I just wrote?\", which is the question that \
+costs an afternoon when two identical-looking windows are hours apart.<br><br>\
+<b>Compare it against when you started the build, not when it finished.</b> \
+A desktop build takes seconds and the difference never shows. The browser UI \
+links for minutes, so its stamp reads minutes behind the bundle it produced - \
+a fresh build looking stale is the expected reading there, not a fault.<br><br>\
 The background service shown as <b>engine</b> is a separate binary and can be \
 a different build entirely; its address is here so the two can be told apart \
 rather than assumed to match."

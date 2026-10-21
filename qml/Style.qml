@@ -85,10 +85,27 @@ QtObject {
     // "see Style.qml" about a paragraph that did not exist here - and it was
     // under-run in 54 places out of 72 before anyone looked.
     //
-    // Sizes ABOVE the floor are still chosen per site: headings at 15, page
-    // titles at 18, and Main.qml's `chromeFont`, which is derived from the
-    // platform font rather than from this scale.
+    // Sizes ABOVE the floor are still chosen per site: headings at 15 and
+    // page titles at 18. The header's size is `fontChrome` below, which used
+    // to be the one exception to this scale.
     readonly property int fontBody: 13
+
+    // The header chrome: the three tabs, the About link, the version string
+    // beside it - everything Main.qml's `chromeFont` feeds.
+    //
+    // It lives here because it used to be derived from the inherited platform
+    // font instead, `root.font.pixelSize + 6`, and the two builds do not
+    // inherit the same font. The desktop gets XSettings' Gtk/FontName, "Sans
+    // 8", which resolves to 10px at this display's 96dpi. The browser has no
+    // such setting, so Qt for WebAssembly falls back to its own default -
+    // DejaVu Sans at the default 12pt, 16px at the same 96dpi. One QML file
+    // therefore rendered a 16px header in the window and a 22px one in the
+    // tab, 37% larger, where every other string matched to the pixel because
+    // every other string is sized from this file.
+    //
+    // 16 is what the desktop was already showing, so this moves the browser
+    // onto the desktop's appearance rather than inventing a third size.
+    readonly property int fontChrome: 16
 
     readonly property color link:       "#60a5fa"
     readonly property color linkHover:  "#93c5fd"
