@@ -533,8 +533,15 @@ run is worse than no monitor.",
                 let missing = v["tools_missing"].as_array().map_or(0, |a| a.len());
                 (
                     Status::Unknown,
+                    // "own closure", like the three branches around it, and
+                    // not "own prefix": this one said the latter, so a
+                    // closure-sourced qmake with an INCOMPLETE prefix was the
+                    // single state whose headline never named where the
+                    // version came from. The test for that has always been
+                    // here; nothing reached this branch until a UI rebuilt
+                    // against the merged Qt env made the closure the source.
                     format!(
-                        "no qmake on PATH - this app's own prefix is {ver}, \
+                        "no qmake on PATH - {ver} in this app's own closure, \
                          missing {missing} host tool(s)"
                     ),
                 )
