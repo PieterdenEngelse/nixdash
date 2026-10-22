@@ -247,9 +247,6 @@ deploy:
 # The question behind "my change did not show up": a switch installs a new
 # binary and rewrites the unit, but leaves the old process serving.
 
-# Show which binary the service is actually running.
-# Run the window that is already built, and build nothing.
-#
 # The only line on the Dev page's board that is not a build, and it earns its
 # place because "which build am I looking at" is the most expensive question in
 # this project. The panel icon can be pinned to a store path, the installed
@@ -260,11 +257,11 @@ deploy:
 # Deliberately no NIXDASH_QML_DIR. It redirects Main.qml alone, so for any
 # other component it shows the PREVIOUS build with no error of any kind - see
 # qml_url() in ui/src/main.rs. Putting it here would enshrine that trap.
+
+# Run the window that is already built, and build nothing.
 run:
     ./target/debug/nixdash-ui
 
-# One window, this build, nothing else of mine in the way.
-#
 # The convenience form of `run`, written after an afternoon of reading the
 # wrong window: three were open at once - the installed build the panel icon
 # had pinned to a store path, a dev build, and a browser tab - and nothing on
@@ -284,6 +281,8 @@ run:
 # Windows are matched by resolving /proc/PID/exe, not by name: the installed
 # binary runs as `.nixdash-ui-wrapped`, comm is truncated to 15 characters,
 # and a pattern loose enough to catch both also catches this script.
+
+# One window, this build, nothing else of mine in the way.
 fresh:
     #!/usr/bin/env bash
     set -uo pipefail
@@ -327,6 +326,7 @@ fresh:
     echo "starting ./target/debug/nixdash-ui (built $(date -r ./target/debug/nixdash-ui +%H:%M))"
     exec ./target/debug/nixdash-ui
 
+# Show which binary the service is actually running.
 which:
     #!/usr/bin/env bash
     set -uo pipefail
