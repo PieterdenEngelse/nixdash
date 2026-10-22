@@ -30,6 +30,29 @@ impl RunOutcome {
     }
 }
 
+/// What starting a detached process told us - which is less than it looks.
+///
+/// There is deliberately no `succeeded()` here, unlike `RunOutcome`. A
+/// successful fork is not a running server, and a method called `succeeded`
+/// would be read as one. Whether it is up is a question for a probe.
+#[derive(Debug, Clone, Serialize)]
+pub struct SpawnOutcome {
+    pub argv: Vec<String>,
+    /// Set when the child was already gone a moment after starting, with its
+    /// exit status. This is the ONLY way an exec failure is visible here:
+    /// `setsid` forks successfully and only then fails to exec, so the
+    /// spawner gets a pid for a process that never ran the target. Checking
+    /// /proc for that pid does not help - a zombie has a /proc entry, which
+    /// is how a "started" window came to close two real ones.
+    pub exited: Option<i32>,
+    /// Where its output went, so a process with no terminal can still say why
+    /// it died.
+    pub log: String,
+    pub pid: Option<u32>,
+    /// Set when the fork itself failed.
+    pub error: Option<String>,
+}
+
 /// Where NixOS keeps setuid binaries. MUST be searched before the system
 /// profile.
 ///
@@ -182,6 +205,136 @@ pub fn run(cmd: &RunCommand) -> RunOutcome {
     }
 
     outcome
+}
+
+/// Start something that is meant to keep running, and do not wait for it.
+///
+/// For a server, exiting IS the failure, so every assumption `run` is built on
+/// is inverted: there is no exit code worth waiting for, and waiting at all
+/// would hold the request until the timeout killed the very process that was
+/// asked for.
+///
+/// Three things this must get right, each of which has its own failure if
+/// missed:
+///
+/// - **Output goes to a file, never to a pipe.** Nobody is draining it, and a
+///   pipe holds about 64K - a server logging into a full pipe blocks forever,
+///   which looks like a hang in the thing you just started. The path is
+///   returned so the page can name it, because a process with no terminal has
+///   nowhere else to put its reason for dying.
+/// - **Its own process group**, via `setsid`. Otherwise it is in the engine's
+///   group and dies with it, so restarting the service would silently take
+///   down a dev engine you started hours ago.
+/// - **Success here is not success.** This returns once the fork succeeded,
+///   which says nothing about whether the port was free or the binary ran.
+///   Only a probe can answer that, and the caller must do one.
+pub fn spawn_detached(
+    cmd: &RunCommand,
+    log: &std::path::Path,
+    env: &[(&str, String)],
+) -> SpawnOutcome {
+    let argv = argv_for(cmd);
+    let mut outcome = SpawnOutcome {
+        argv: argv.clone(),
+        exited: None,
+        log: log.display().to_string(),
+        pid: None,
+        error: None,
+    };
+
+    let file = match std::fs::File::create(log) {
+        Ok(f) => f,
+        Err(e) => {
+            outcome.error = Some(format!("could not open {}: {e}", log.display()));
+            return outcome;
+        }
+    };
+    let errfile = match file.try_clone() {
+        Ok(f) => f,
+        Err(e) => {
+            outcome.error = Some(format!("could not open {} twice: {e}", log.display()));
+            return outcome;
+        }
+    };
+
+    tracing::info!(argv = ?argv, log = %log.display(), "starting detached");
+
+    // setsid rather than a libc call: this crate has no unsafe and no libc
+    // dependency, and `setsid` is in the system profile on any NixOS machine.
+    // It execs the target, so the pid reported is the one that matters.
+    let mut command = Command::new(resolve_program("setsid"));
+    command.arg("--");
+    command.args(&argv);
+    if let Some(dir) = &cmd.cwd {
+        command.current_dir(dir);
+    }
+    for (k, v) in env {
+        command.env(k, v);
+    }
+
+    match command
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::from(file))
+        .stderr(std::process::Stdio::from(errfile))
+        .spawn()
+    {
+        Ok(mut child) => {
+            outcome.pid = Some(child.id());
+            // Watch it briefly. An exec failure, a missing display or a
+            // refused port all end the process within milliseconds, and this
+            // is the only moment the truth is cheap to get. try_wait also
+            // REAPS it, so a failed start does not leave a zombie behind
+            // whose /proc entry would read as a running program.
+            let deadline = std::time::Instant::now() + Duration::from_millis(600);
+            while std::time::Instant::now() < deadline {
+                match child.try_wait() {
+                    Ok(Some(status)) => {
+                        outcome.exited = Some(status.code().unwrap_or(-1));
+                        break;
+                    }
+                    Ok(None) => std::thread::sleep(Duration::from_millis(50)),
+                    Err(e) => {
+                        outcome.error = Some(format!("waiting on {}: {e}", argv[0]));
+                        break;
+                    }
+                }
+            }
+        }
+        Err(e) => outcome.error = Some(format!("could not start {}: {e}", argv[0])),
+    }
+
+    outcome
+}
+
+impl SpawnOutcome {
+    /// Started, and still running a moment later. Deliberately not called
+    /// `succeeded`: a window that is up is not necessarily a window you can
+    /// see, and only the person at the screen can say that.
+    pub fn still_running(&self) -> bool {
+        self.error.is_none() && self.pid.is_some() && self.exited.is_none()
+    }
+}
+
+/// Stop something `spawn_detached` started.
+///
+/// `setsid` execs the target, so the recorded pid is the process itself and a
+/// plain TERM reaches it. Reported honestly: "no such process" means it had
+/// already gone, which is not a failure to stop it.
+pub fn stop(pid: u32) -> Result<(), String> {
+    let out = Command::new(resolve_program("kill"))
+        .arg("-TERM")
+        .arg(pid.to_string())
+        .output()
+        .map_err(|e| format!("could not run kill: {e}"))?;
+    if out.status.success() {
+        return Ok(());
+    }
+    let why = String::from_utf8_lossy(&out.stderr).trim().to_string();
+    Err(if why.is_empty() {
+        format!("kill {pid} failed")
+    } else {
+        why
+    })
 }
 
 fn drain<R: std::io::Read + Send + 'static>(mut r: R) -> std::thread::JoinHandle<String> {

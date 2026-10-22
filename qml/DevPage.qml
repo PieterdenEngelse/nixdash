@@ -26,6 +26,151 @@ Item {
     // re-polls afterwards.
     signal ranAction()
 
+    /// Per-id run state for the board below: { running, ok, text, up }.
+    ///
+    /// `up` is only ever set from a probe of the port, never from the fact
+    /// that a start was requested - a fork succeeding is not a server
+    /// listening, and treating it as one is how a button comes to claim a
+    /// start that did not happen.
+    property var runState: ({})
+    property string runResult: ""
+    property bool runResultOk: true
+
+    function setRun(id, st) {
+        var next = {}
+        for (var k in root.runState)
+            next[k] = root.runState[k]
+        next[id] = st
+        root.runState = next
+    }
+
+    /// Ask the app to run one of the lines below.
+    ///
+    /// Posts the row's id and nothing else: what each id executes is fixed
+    /// where the ids are defined, so no command travels over this.
+    function runBuild(id) {
+        root.setRun(id, { running: true, up: root.upNow(id) })
+        root.runResult = ""
+        var xhr = new XMLHttpRequest()
+        xhr.open("POST", root.apiBase + "/api/builds/" + encodeURIComponent(id) + "/run")
+        xhr.onreadystatechange = function() {
+            if (xhr.readyState !== XMLHttpRequest.DONE)
+                return
+            root.applyReply(id, xhr)
+        }
+        xhr.send()
+    }
+
+    function stopBuild(id) {
+        root.setRun(id, { running: true, up: root.upNow(id) })
+        root.runResult = ""
+        var xhr = new XMLHttpRequest()
+        xhr.open("POST", root.apiBase + "/api/builds/" + encodeURIComponent(id) + "/stop")
+        xhr.onreadystatechange = function() {
+            if (xhr.readyState !== XMLHttpRequest.DONE)
+                return
+            root.applyReply(id, xhr)
+        }
+        xhr.send()
+    }
+
+    function upNow(id) {
+        return root.runState[id] ? !!root.runState[id].up : false
+    }
+
+    /// Turn one reply into a sentence and a dot.
+    ///
+    /// Every branch here reports what was actually learned. A started server
+    /// is reported from the probe in the reply, a held port says so rather
+    /// than reading as a start, and a command that exited non-zero names its
+    /// stderr - "it failed" on its own sends you to look for the reason in
+    /// the terminal this was pressed to avoid.
+    function applyReply(id, xhr) {
+        var ok = false
+        var text = ""
+        var up = root.upNow(id)
+        try {
+            var d = JSON.parse(xhr.responseText)
+            if (xhr.status === 200) {
+                ok = d.ok
+                if (d.stopped !== undefined) {
+                    text = "stopped (pid " + d.stopped + ")"
+                    up = false
+                } else if (d.state !== undefined) {
+                    // The daemon row. `state` is what the port said, which is
+                    // the only thing that can tell a start from a squatter.
+                    up = d.state.state === "running"
+                    text = d.detail
+                    if (d.state.state === "running")
+                        text += " - built " + d.state.built
+                            + (d.state.ours ? "" : ", started elsewhere")
+                    else if (d.state.state === "foreign")
+                        text += " - " + d.state.detail
+                } else if (d.outcome !== undefined) {
+                    var o = d.outcome
+                    text = o.error ? o.error
+                         : ok ? (o.stdout ? o.stdout : "done")
+                         : "exit " + o.exit_code + (o.stderr ? ": " + o.stderr : "")
+                } else {
+                    // A window: started and let go, so there is a detail line
+                    // and no exit code to wait for. A restart may never get
+                    // this far - the window reading it is one of the ones it
+                    // just closed.
+                    text = d.detail ? d.detail : (ok ? "started" : "nothing started")
+                }
+            } else {
+                text = d.error ? d.error : ("HTTP " + xhr.status)
+            }
+        } catch (e) {
+            text = xhr.status === 0 ? "the app's background service is unreachable"
+                                    : "HTTP " + xhr.status
+        }
+        root.setRun(id, { running: false, ok: ok, text: text, up: up })
+        root.runResult = text
+        root.runResultOk = ok
+        root.ranAction()
+    }
+
+    /// What is on the dev engine's port, asked of the port itself.
+    ///
+    /// Polled rather than remembered: an engine started from a terminal is as
+    /// real as one started here, and one this app started outlives this app.
+    /// Either way the honest answer comes from the port.
+    function refreshBuilds() {
+        var xhr = new XMLHttpRequest()
+        xhr.open("GET", root.apiBase + "/api/builds")
+        xhr.onreadystatechange = function() {
+            if (xhr.readyState !== XMLHttpRequest.DONE || xhr.status !== 200)
+                return
+            try {
+                var d = JSON.parse(xhr.responseText)
+                var prev = root.runState["dev-engine"] ? root.runState["dev-engine"] : {}
+                if (prev.running)
+                    return
+                var st = { running: false, up: d.dev_engine.state === "running" }
+                if (prev.text !== undefined) {
+                    st.text = prev.text
+                    st.ok = prev.ok
+                }
+                root.setRun("dev-engine", st)
+            } catch (e) {
+                // A malformed reply leaves the previous state alone rather
+                // than reporting the engine as stopped, which would be a
+                // reading taken from a parse failure.
+            }
+        }
+        xhr.send()
+    }
+
+    Component.onCompleted: root.refreshBuilds()
+
+    Timer {
+        interval: 15000
+        running: true
+        repeat: true
+        onTriggered: root.refreshBuilds()
+    }
+
     function panel(id) {
         var m = panels.filter(function(p) { return p.id === id })
         return m.length > 0 ? m[0] : null
@@ -61,13 +206,16 @@ Item {
                 width: parent.width
                 wrapMode: TextEdit.Wrap
                 font.pixelSize: style.fontBody
-                text: "What is compiled, and whether it matches the source on "
-                    + "disk. The window and the background service are "
-                    + "separate programs and can be different builds - which "
-                    + "is the usual reason a change you just made does not "
-                    + "show up. Drag across the rows to select what you drag, "
-                    + "Ctrl+A for a whole section, or Ctrl+Shift+C to copy "
-                    + "the section under the pointer as tab-separated text."
+                text: "What is compiled, and whether it matches the source "
+                    + "on disk. Three programs, not one: this window, the "
+                    + "same interface compiled to WebAssembly for a browser "
+                    + "tab, and the background service both of them read. "
+                    + "Each is built on its own, so any of them can be a "
+                    + "different build from the others - which is the usual "
+                    + "reason a change you just made does not show up. Drag "
+                    + "across the rows to select what you drag, Ctrl+A for a "
+                    + "whole section, or Ctrl+Shift+C to copy the section "
+                    + "under the pointer as tab-separated text."
             }
 
             // Which change needs which build, as reference rather than
@@ -207,16 +355,22 @@ build forever. The Qt for WebAssembly board below is what tells you, naming \
 the file that is ahead of the bundle."
                     rows: [
                         { label: "many qml/ edits", value: "just watch-desktop",
-                          source: "no rebuild per edit - relaunches on save",
-                          what: "Runs this window with NIXDASH_QML_DIR set, so \
-it reads qml/ from disk rather than its compiled-in copy, and relaunches it \
-whenever a file there changes.",
-                          why: "The binary never changes, so there is nothing \
-to rebuild between edits - the loop is a save and a relaunch of about a \
-tenth of a second.",
-                          ifWrong: "<b>A NEW .qml file will render here while \
-being absent from both build.rs lists</b>, and the next real build - or the \
-browser - is where you would find out. <tt>just gate</tt> checks it." },
+                          source: "rebuilds and relaunches on save - ~2 min each",
+                          what: "Watches qml/ and, on every change, rebuilds \
+this window and relaunches it.",
+                          why: "<b>The rebuild is not optional, which is the \
+whole lesson of this row.</b> It used to only relaunch, with the QML read \
+from disk - and that reads only Main.qml. Every other component comes from \
+the copy compiled into the binary, so editing one and relaunching showed the \
+PREVIOUS build, with no error anywhere. Hours went into \"the change is not \
+showing\" before that was understood.",
+                          ifWrong: "Measured at 2 minutes 15 seconds per save, \
+because the whole UI crate relinks - a pane to glance at, not a loop to wait \
+on. A failed build leaves the window you have alone and says so, rather than \
+killing it for a typo.<br><br>\
+A <b>new</b> .qml is the one thing that does load from disk, since the \
+compiled module has no name to shadow - so it can render here while missing \
+from both build.rs lists. <tt>just gate</tt> checks for that." },
                         { label: "qml/, ui/src/", value: "just desktop",
                           source: "wraps the dev shell, builds, relaunches",
                           what: "Anything this window renders.",
@@ -408,32 +562,219 @@ above says which Qt this is, and both come from \
             // The boards above decide WHICH build; this one is the literal
             // form of each. They stay short on purpose, so the two are not
             // two copies of the same string.
+            //
+            // Titled "Commands" rather than "The lines in full": it stopped
+            // being only lines when two of its rows became a recipe name and
+            // a launch that builds nothing, and every row now carries a
+            // button, so the board is the set of things this page can do.
             ConfigSection {
                 id: commandLines
                 width: parent.width
                 height: commandLines.implicitHeight
-                title: "The lines in full"
-                what: "Each build above, as a line you can run as printed - \
-no assembly from a value and a provenance line."
-                why: "<tt>cargo build -p nixdash-ui</tt> alone fails: outside \
-the dev shell it dies on \"Could not find Qt\", because QMAKE is only set \
-inside it. The engine is the opposite - it needs no shell. That asymmetry is \
-not visible in a column that has room for the command but not its \
-prerequisite."
-                ifWrong: "A path here is this machine's. The repository is at \
-<tt>~/Projects/nixdash</tt>, and these assume the engine on :3100 is already \
-running - which it is, if the app is drawing this."
+                title: "Commands"
+                what: "Every command the boards above refer to, written out \
+in full and runnable as printed - no assembling one from a value and a \
+provenance line. Each also has a button that runs it from here, so the line \
+is both the instruction and the record of what the button does.<br><br>\
+Two rows are exceptions and say so: one builds nothing, and the last is a \
+recipe name because it is a script rather than a line."
+                why: "<b>A command needs its prerequisite, and a column has \
+room for only one of them.</b> <tt>cargo build -p nixdash-ui</tt> alone fails \
+outside the dev shell - it dies on \"Could not find Qt\", because QMAKE is \
+only set inside it - while the engine needs no shell at all. Written out in \
+full, the difference is visible; abbreviated to a verb and a note, it is \
+not.<br><br>\
+It is also what the buttons are checked against: a test reads these lines and \
+fails if one is not a command this project actually defines, so the page \
+cannot drift from the Justfile."
+                ifWrong: "A path here is this machine's - the repository at \
+<tt>~/Projects/nixdash</tt> - and most of these assume the app's service on \
+:3100 is already running, which it is if this is on your screen.<br><br>\
+<tt>just</tt> is not on PATH outside the dev shell, so the one recipe-named \
+row needs <tt>nix develop --command just …</tt> from an ordinary terminal. \
+The rest need nothing but a path."
+                sections: [
+                    { title: "What a recipe is", body: "A <b>recipe</b> is a \
+named command kept in this project's <tt>Justfile</tt> - the same idea as a \
+target in a Makefile, or a script in a package.json.<br><br>\
+<tt>just browser</tt> runs the recipe named <tt>browser</tt>, which holds \
+<tt>nix develop .#wasm --command bash ui-wasm/build.sh</tt>. \
+<tt>just --list</tt> prints every one of them with a line of description.<br><br>\
+They exist so a long command line lives in exactly one place. That is also \
+what lets this board be checked: a test reads these rows against the \
+Justfile, so a line printed here and the recipe it names cannot drift \
+apart." }
+                ]
+                runState: root.runState
+                resultText: root.runResult
+                resultOk: root.runResultOk
+                onRunRequested: function(id) { root.runBuild(id) }
+                onStopRequested: function(id) { root.stopBuild(id) }
+                onLinkActivated: function(id) { if (id === "justfile") root.showJustfile() }
                 rows: [
                     { label: "this window", value: "cd ~/Projects/nixdash && nix develop --command bash -c 'cargo build -p nixdash-ui && ./target/debug/nixdash-ui'",
-                      source: "3 · Draws something (twice) - builds and launches, seconds, against the running engine" },
+                      source: "3 · Draws something (twice) - builds and launches, seconds, against the running engine",
+                      buildId: "desktop-ui", runLabel: "Build",
+                      what: "Build compiles the window. It does NOT launch it - the \
+line shown ends by starting the binary, and the button stops one step short, \
+leaving you to open it when you want it.",
+                      why: "<b>A window is yours to open.</b> Launching it from \
+here would also hold this request until you closed it again, because the app \
+waits for what it starts in order to report how it went.",
+                      ifWrong: "Outside the dev shell this build cannot work at \
+all - it dies on \"Could not find Qt\", because QMAKE is only set inside it - \
+which is why the button runs it through <tt>nix develop</tt> rather than \
+bare. Seconds, normally; the first build after a Qt change is not." },
                     { label: "browser UI", value: "cd ~/Projects/nixdash && nix develop .#wasm --command bash ui-wasm/build.sh",
-                      source: "3 · Draws something (twice) - then ./ui-wasm/serve.sh, which serves :8099" },
+                      source: "3 · Draws something (twice) - then ./ui-wasm/serve.sh, which serves :8099",
+                      buildId: "browser-ui", runLabel: "Build",
+                      what: "Recompiles the shared QML to WebAssembly. Build does \
+the build only; the serve step the line ends with is not started.",
+                      why: "Serving would hold a port and this request with it. \
+The build is the part that goes stale - the browser version keeps serving \
+whatever was last compiled into it, which looks identical to working.",
+                      ifWrong: "Several minutes, and a separate toolchain: if \
+it fails at once complaining about a missing wasm toolchain, that dev shell \
+did not activate. Nothing is lost by not running it unless you are using the \
+browser UI today.",
+                      sections: [
+                          { title: "Building on every save", body: "\
+<tt>just watch-browser</tt> is this same build on a loop: it watches \
+<tt>qml/</tt>, rebuilds whenever you save, prints each build in the terminal, \
+and the served page reloads itself when one lands.<br><br>\
+<b>Saving during a build queues one more build - not one per save.</b> The \
+loop compares only the newest timestamp under <tt>qml/</tt>, so a flurry of \
+edits made while a build is running is rolled together into a single rebuild \
+after it.<br><br>\
+Each build is minutes, so editing steadily gives you a rebuild every few \
+minutes, each carrying everything saved since the last. That is the loop \
+working, not a fault. If you would rather not have builds competing for \
+memory while you work, stop the loop, make the edits, and start it again for \
+one build at the end." }
+                      ] },
                     { label: "a second engine", value: "cd ~/Projects/nixdash && cargo build -p nixdash-engine && NIXDASH_PORT=3199 ./target/debug/nixdash-engine",
-                      source: "2 · Measures or decides - no dev shell needed; never takes :3100 from the service" },
+                      source: "2 · Measures or decides - no dev shell needed; never takes :3100 from the service",
+                      buildId: "dev-engine", runLabel: "Start", stoppable: true,
+                      what: "Starts a second engine on :3199 and leaves it \
+running, with its output in a log file the result line names - a process with \
+no terminal has nowhere else to put the reason it died. Start builds nothing: \
+it starts the binary as it stands, so a stale one starts stale.",
+                      why: "<b>Started is not listening.</b> Every other button \
+here waits for its command and reports an exit code, but a server that exits \
+has failed. So this one reports what the port answered instead - the only \
+thing that can tell a start apart from a port that was already taken, and the \
+reply says which it was.",
+                      ifWrong: "If something already holds :3199 then nothing \
+is started and it says so, naming what answered. Stop appears only while the \
+port is answering, and only this app can stop what it started - one started \
+from a terminal says so, and is stopped there with Ctrl-C.<br><br>\
+Never :3100. A second engine on the service's port makes the real one \
+crash-loop invisibly behind it while health checks keep answering, from the \
+squatter.",
+                      sections: [
+                          { title: "Why a probe", body: "A fork succeeding \
+means the process started, not that it bound the port. The two come apart \
+constantly here: the binary is missing because nothing built it, or :3199 is \
+still held by the engine you started an hour ago.<br><br>\
+So after starting it, the app asks :3199 what is there and reports that. \
+Three answers rather than two - nothing listening, this app's engine, or \
+something else entirely - because the middle and the last are what you need \
+to tell apart, and a button that reported only success or failure would show \
+the same green tick for both." },
+                          { title: "Which build answered", body: "The reply \
+carries the build stamp of whatever is on the port, and the result line \
+prints it. That is the only way to tell two engines apart: the version number \
+is identical in every build ever made, so a stale engine and a fresh one look \
+the same everywhere else.<br><br>\
+It also says whether this app started it. After the background service \
+restarts, an engine you started earlier keeps running and is still reported - \
+honestly, as something this app no longer owns and will not stop." }
+                      ] },
                     { label: "install, user", value: "home-manager switch",
-                      source: "1 · Changes what is installed - then the systemctl --user restart it prints" },
+                      source: "1 · Changes what is installed - then the systemctl --user restart it prints",
+                      buildId: "install-user", runLabel: "Switch",
+                      what: "Rebuilds everything home-manager manages and \
+switches to it - not only this project. Switch performs it and stops \
+there.",
+                      why: "<b>The restart it prints is deliberately not run.</b> \
+A switch can legitimately fail, and restarting into a build that did not \
+happen is worse than leaving the old one serving. It also takes about fifteen \
+minutes, so it is never the way to see a change - the window build above is.",
+                      ifWrong: "It builds your whole user config, so an \
+unrelated half-finished edit elsewhere fails the build - which leaves the \
+current generation untouched rather than breaking anything. A changed \
+background service keeps running the old build until the restart, which the \
+build-freshness board above reports." },
                     { label: "install, system", value: "sudo nixos-rebuild switch",
-                      source: "1 · Changes what is installed - /etc/nixos; --flake is implied when its flake.nix exists" }
+                      source: "1 · Changes what is installed - /etc/nixos; --flake is implied when its flake.nix exists",
+                      buildId: "install-system", runLabel: "Switch",
+                      what: "Builds and switches the system configuration from \
+/etc/nixos: the kernel, services, users - everything outside your own \
+session.",
+                      why: "<b>This needs root, and the app has none of its \
+own.</b> It asks polkit, which puts a prompt in front of you, and that prompt \
+is the authorisation - not the button. The line shows <tt>sudo</tt> because \
+that is what you would type; sudo itself is never used here, as it wants a \
+terminal this app does not have.",
+                      ifWrong: "Dismiss the prompt and it reports not \
+authorised rather than failing silently. With no polkit agent running there \
+is nothing to show a prompt, and it says so instead of waiting forever. \
+nixdash never needs this for itself." },
+                    { label: "run, no build", buildId: "open-window", runLabel: "Open", value: "cd ~/Projects/nixdash && ./target/debug/nixdash-ui",
+                      source: "builds NOTHING - starts whatever is already in target/debug",
+                      what: "Starts the binary sitting in target/debug, as it \
+stands. The only line here that compiles nothing, so a stale binary starts \
+stale - which is the point: it shows you what you actually have rather than \
+making a new one.",
+                      why: "<b>Which build am I looking at is the expensive \
+question in this project, and nothing else on this page answers it.</b> The \
+panel icon can be pinned to a fixed store path and keep starting one build \
+for ever; the installed window and this one are indistinguishable on screen; \
+and the row at the top rebuilds first, so it cannot tell you what you had. \
+Naming the path leaves nothing to resolve.<br><br>\
+<b>Open</b> starts it from here, which is the one launch this page does. It \
+is let go rather than waited for - a window outlives the request that started \
+it - so the reply says a process started and nothing about what is drawn. \
+Whether a window actually appeared is a reading only you can take.",
+                      ifWrong: "<b>No NIXDASH_QML_DIR here, deliberately.</b> \
+It redirects Main.qml and nothing else, so on any other component it shows the \
+previous build with no error anywhere - hours were lost to exactly that. A \
+component edit needs the first row.<br><br>\
+It talks to the app's service on :3100 unless you put <tt>NIXDASH_PORT=</tt> \
+in front, so a build with newer readings than that service can answer will \
+show them as unavailable. The build date in About is how you confirm which \
+one you got.<br><br>\
+<tt>just fresh</tt> is the row below: the same launch, with the stale windows \
+closed first." },
+                    { label: "fresh window", buildId: "restart-window", runLabel: "Restart", value: "just fresh",
+                      source: "closes every nixdash window, then starts the built one",
+                      linkText: "just file", linkId: "justfile",
+                      what: "Closes every window it can account for - naming \
+each, including one still running a build that has since been replaced - and \
+then starts the binary in target/debug. It builds nothing, exactly like the \
+row above.",
+                      why: "<b>Restart closes the window you pressed it in.</b> \
+So do not wait for a result here: the new window IS the result, and this one \
+will be gone. It starts the new window FIRST and closes the old ones only \
+once it has survived a moment - the other order leaves you with no window at \
+all when the start fails, and no window is also where the error would have \
+been.<br><br>\
+<b>A window cannot pick up a new build in place.</b> \
+So after any build the window in front of you is the old one, and two windows \
+from different builds are indistinguishable on screen - which is how an \
+afternoon goes into reading the wrong one. This is the find-the-pid, kill it, \
+launch again sequence as one line.",
+                      ifWrong: "It will <b>not</b> kill a watch loop, whatever \
+holds :3100, or a second engine on :3199. Each of those is something you \
+started deliberately, so they are reported instead.<br><br>\
+This is the one line here that needs <tt>just</tt>, which is why it is shown \
+as a recipe name rather than in full - there is no single line to paste. And \
+<b>just is not on PATH outside the dev shell</b>, so from an ordinary terminal \
+it is <tt>nix develop --command just fresh</tt>. Anywhere inside the \
+repository will do; just finds the Justfile by searching upward.<br><br>\
+The row above needs nothing but the path - verified with the Qt environment \
+stripped, on a display of its own: the binary finds its own plugins, so that \
+line really does work from a bare shell." }
                 ]
             }
 
@@ -449,6 +790,106 @@ running - which it is, if the app is drawing this."
                 errors: []
                 apiBase: root.apiBase
                 onRanAction: root.ranAction()
+            }
+        }
+    }
+
+    // The Justfile, fetched when asked for rather than compiled in.
+    //
+    // A recipe named on the Commands board and the recipe that actually runs
+    // have to be the same thing, and a copy baked into this page would be one
+    // more thing that can drift from it - which is the exact failure the
+    // board's own test exists to catch. So this reads the file through the
+    // app's service each time it is opened.
+    property string justfileText: ""
+    property string justfilePath: ""
+    property string justfileError: ""
+
+    function showJustfile() {
+        root.justfileError = ""
+        root.justfileText = ""
+        justfileSheet.open()
+        var xhr = new XMLHttpRequest()
+        xhr.open("GET", root.apiBase + "/api/justfile")
+        xhr.onreadystatechange = function() {
+            if (xhr.readyState !== XMLHttpRequest.DONE)
+                return
+            if (xhr.status === 200) {
+                var d = JSON.parse(xhr.responseText)
+                root.justfilePath = d.path
+                root.justfileText = d.text
+            } else {
+                // Say which failure it was. An unreadable file and an empty
+                // one are different answers, and a blank panel would show
+                // them as the same.
+                root.justfileError = xhr.status === 0
+                    ? "no answer from the app's service"
+                    : "could not read it (" + xhr.status + ")"
+            }
+        }
+        xhr.send()
+    }
+
+    Popup {
+        id: justfileSheet
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        width: Math.min(1000, root.width - 80)
+        height: Math.min(760, root.height - 80)
+        modal: true
+        focus: true
+        padding: 16
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 8
+
+            RowLayout {
+                Layout.fillWidth: true
+                SelectableText {
+                    text: "Justfile"
+                    font.bold: true
+                    font.pixelSize: 15
+                }
+                Item { Layout.fillWidth: true }
+                CloseX { onClicked: justfileSheet.close() }
+            }
+
+            // The path, because which file this is matters as much as what
+            // is in it - the service resolves it from NIXDASH_REPO or your
+            // home directory, and those can disagree with the tree you are
+            // editing.
+            SelectableText {
+                Layout.fillWidth: true
+                visible: root.justfilePath !== ""
+                text: root.justfilePath
+                font.pixelSize: style.fontBody
+                color: style.textMuted
+                wrapMode: TextEdit.Wrap
+            }
+
+            SelectableText {
+                Layout.fillWidth: true
+                visible: root.justfileError !== ""
+                text: "✗ " + root.justfileError
+                font.pixelSize: style.fontBody
+                color: style.badText
+                wrapMode: TextEdit.Wrap
+            }
+
+            ScrollView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+
+                SelectableText {
+                    width: justfileSheet.availableWidth
+                    text: root.justfileText === "" && root.justfileError === ""
+                          ? "reading…" : root.justfileText
+                    font.family: "monospace"
+                    font.pixelSize: style.fontBody
+                    wrapMode: TextEdit.Wrap
+                }
             }
         }
     }

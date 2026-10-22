@@ -1,3 +1,6 @@
 /target
 /result*
 /ui-wasm/build
+/ui-wasm/releases
+/ui-wasm/current
+/ui-wasm/.build.lock

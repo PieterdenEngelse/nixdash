@@ -1,5 +1,6 @@
 pub mod actions;
 pub mod api;
+pub mod builds;
 pub mod collector;
 pub mod collectors;
 pub mod devshell;

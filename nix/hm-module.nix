@@ -120,6 +120,53 @@ in
       description = "Value of RUST_LOG for the service.";
     };
 
+    # The browser UI's server, supervised rather than started by hand.
+    #
+    # Off by default: it serves a directory in the development tree, so it is
+    # for someone working on this project, not for running it.
+    #
+    # It exists because an unsupervised server outlived what it was serving.
+    # One started from a terminal was still holding :8099 a full day later,
+    # with its working directory the build/ work area, quietly serving a
+    # half-written bundle while a freshly published one sat beside it - and
+    # the symptom was a WebAssembly instantiation error that reads as a
+    # broken build. A unit gives the thing one owner: `systemctl --user
+    # restart` has a single meaning, a second start is refused instead of
+    # failing on bind(2), `status` says what it is serving, and it does not
+    # outlive the session.
+    browser = {
+      enable = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = "Run the browser UI's static server as a user service.";
+      };
+
+      port = lib.mkOption {
+        type = lib.types.port;
+        default = 8099;
+        description = ''
+          Port on 127.0.0.1 for the browser UI.
+
+          Loopback only, like the engine, and for the same reason: there is
+          nothing here to authenticate against.
+        '';
+      };
+
+      tree = lib.mkOption {
+        type = lib.types.str;
+        default = "${toString ../.}/ui-wasm/current";
+        defaultText = lib.literalExpression ''"\''${toString ../.}/ui-wasm/current"'';
+        description = ''
+          Directory to serve.
+
+          The default is the symlink `ui-wasm/build.sh` flips on a successful
+          build, never `ui-wasm/build` itself: that one holds a mixture of two
+          builds during a link and after an interrupted one, and serving it is
+          what made that mixture the browser's problem.
+        '';
+      };
+    };
+
     ui = {
       enable = lib.mkOption {
         type = lib.types.bool;
@@ -256,6 +303,35 @@ in
 
       Install = lib.mkIf cfg.autoStart {
         WantedBy = [ "default.target" ];
+      };
+    };
+
+    systemd.user.services.nixdash-serve = lib.mkIf cfg.browser.enable {
+      Unit = {
+        Description = "nixdash browser UI server (loopback only)";
+        After = [ "graphical-session-pre.target" ];
+      };
+
+      Service = {
+        Type = "simple";
+        # The script from the working tree, not a store copy: this serves a
+        # directory in that tree and is edited alongside it, so a store copy
+        # would be a second version to keep in step.
+        #
+        # serve.py directly rather than serve.sh: the wrapper's job is to pick
+        # a tree and tell you who holds the port, and systemd does both of
+        # those better - the tree is configuration here, and a second start is
+        # refused by the unit.
+        ExecStart = "${pkgs.python3}/bin/python3 ${toString ../.}/ui-wasm/serve.py ${toString cfg.browser.port} --quiet";
+        WorkingDirectory = cfg.browser.tree;
+        Restart = "on-failure";
+        RestartSec = "5s";
+      };
+
+      Install = {
+        # Dies with the session, which is the point: the server that caused
+        # the trouble had outlived the day it was started in.
+        WantedBy = [ "graphical-session.target" ];
       };
     };
   };

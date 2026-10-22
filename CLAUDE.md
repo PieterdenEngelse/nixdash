@@ -36,11 +36,14 @@ nix develop --command just --list   # from outside the shell; `just` lives in it
 | `just gate-rust` | the above plus clippy — for Rust **code** paths | ~9 min |
 | `just gate-all` | everything including the UI crate, inside the dev shell | slow |
 | `just desktop` | build this window and run it against the engine on :3100 | seconds |
+| `just run` | run the window **already** in `target/debug` - builds nothing | instant |
+| `just fresh` | close every nixdash window, then run the one in `target/debug` | instant |
 | `just engine` | a second engine on :3199, beside the service | seconds |
 | `just browser` | rebuild the browser UI (emcc + wasm32 target) | minutes |
 | `just serve` | serve the browser UI on :8099 | — |
 | `just deploy` | `home-manager switch`, then the restart it prints | ~15 min |
-| `just watch` | relaunch the window on every `qml/` change — no rebuild per edit | seconds once |
+| `just watch-desktop` | rebuild **and** relaunch the window on every `qml/` change | ~2 min each |
+| `just watch-browser` | rebuild the browser UI on every `qml/` change, reporting each build | minutes each |
 | `just which` | which binary the service is **actually** running | — |
 
 Two things the recipes deliberately do not hide. `just desktop` wraps `nix develop`
@@ -48,15 +51,63 @@ because `QMAKE` is only set inside it; `just engine` does not, because the
 engine links no Qt. And `just deploy` is never the way to see a change —
 that is `just desktop`.
 
-The full command lines also appear on the Dev page, in "The lines in full",
-for pasting into a terminal that has no `just`.
+The full command lines also appear on the Dev page, under "Commands",
+for pasting into a terminal that has no `just` - except `fresh`, which is
+named rather than spelled out because it is a script, not a line - and each runnable row has an action
+button, which posts the row's id to `/api/builds/{id}/run`.
 
-**QML without a rebuild.** `NIXDASH_QML_DIR=$PWD/qml ./target/debug/nixdash-ui`
-reads `qml/` from disk instead of the compiled-in resource bundle, so an edit
-needs no `cargo build` — relaunching the same binary is enough, which is what
-`just watch` loops. It works because `Main.qml` carries `import nixdash`: the
-Rust-defined `Dash` type is registered by cxx-qt at startup rather than living
-in the bundle. Unset, nothing changes.
+Four of the five wait for the command and report its exit code. The fifth,
+the second engine, is a server: it is started detached with its output in a
+log file, and reported on by **probing :3199**, never by waiting - a fork
+succeeding is not a port being bound. The probe gives three answers, and the
+middle one is why it exists: nothing listening, this app's engine (with the
+build stamp of whatever answered), or something else holding the port. A
+button that reported only success or failure would show the same tick for a
+clean start and for a port that was already taken.
+
+**`NIXDASH_QML_DIR` redirects `Main.qml`, and nothing else that already
+exists.** `NIXDASH_QML_DIR=$PWD/qml ./target/debug/nixdash-ui` makes the app
+load **`Main.qml`** from that directory instead of the bundle — that one file,
+because the app loads it by path. Every other component resolves like this:
+
+| file | where it comes from |
+|---|---|
+| `Main.qml` | the directory — loaded by path |
+| a component **in** the bundle | the **bundle**, even with an edited copy beside it |
+| a **new** `.qml`, not in the bundle | the directory |
+
+`Main.qml` carries `import nixdash`, and that module — registered by cxx-qt
+from the compiled resource — **shadows the directory** for every name in it.
+So an edit to `ConfigSection.qml`, `DevPage.qml` or any other existing
+component does **not** appear by relaunching. It needs `cargo build`, which
+is why `just watch-desktop` now runs one on every change rather than only
+relaunching. Measured 2026-10-21: touching one `.qml` costs **2m 15s**, since
+the UI crate relinks. That makes it a pane to glance at rather than a loop to
+wait on - the same shape as `just watch-browser`, and nothing like the tenth
+of a second the old relaunch-only loop promised.
+
+A failed build leaves the running window alone and says so, rather than
+killing it: losing the last good version to a typo is worse than looking at a
+slightly stale one.
+
+This is measured, not reasoned: with a marker string planted in three files
+at once and the app started against that directory, `Main.qml`'s marker
+rendered and `DevPage.qml`'s and `ConfigSection.qml`'s did not. A new file
+referenced from `Main.qml` rendered, which is the third row above.
+
+This paragraph used to say the mode "reads `qml/` from disk ... an edit needs
+no `cargo build`". That is true only of `Main.qml`, and believing it of the
+rest costs an afternoon of screenshots that cannot show the change being
+looked for — the binary keeps rendering its own copy, silently and
+correctly.
+
+**The browser half has no equivalent**, because its QML is inside the `.wasm`
+— so `just watch-browser` does the only thing available: a real `emcc` build
+per save, printing when each one starts, how long it took, and whether it
+failed. That is a recipe to leave running in a pane and glance at, not a loop
+to wait on. The tab then reloads itself, because `serve.sh` injects a poller
+that watches the bundle's `Last-Modified`, so the terminal narrates and the
+browser follows with nothing to press in either.
 
 Relaunch rather than in-process reload: `cxx-qt-lib` 0.10 exposes `load` and
 `loadData` and no `clearComponentCache`, so re-reading QML inside a live
@@ -64,11 +115,12 @@ engine would need a C++ shim, and a fresh process cannot leave half a
 reloaded object tree behind.
 
 **The trap it introduces**, and why `engine/tests/qml_registered.rs` now
-exists: in that mode a **new** `.qml` renders without being listed in
-`ui/build.rs` or `ui-wasm/rust/build.rs`, so the omission surfaces at the next
-real build, or only in the browser. The test fails on a file missing from
-either list, and on a list entry whose file is gone — what a rename leaves
-behind.
+exists: a **new** `.qml` is the one case the directory still wins, precisely
+because the module has no name to shadow it with. So it renders without being
+listed in `ui/build.rs` or `ui-wasm/rust/build.rs`, and the omission surfaces
+at the next real build, or only in the browser. The test fails on a file
+missing from either list, and on a list entry whose file is gone — what a
+rename leaves behind.
 
 ## Collaboration Style
 
@@ -136,6 +188,16 @@ behind.
   `./qml-check` is the tool that actually finds those, and it needs no app
   at all. Neither can answer *does it look right*: that judgement is the
   user's, always, and is what the screenshots were really being used for.
+
+  **The browser UI does report them, in the browser console.** The generated
+  glue binds Emscripten's streams straight at it — `var out =
+  console.log.bind(console)` and `var err = console.error.bind(console)` — and
+  Qt's `qDebug`/`qWarning` and QML errors go to stderr. So the same binding
+  error that is silent in the desktop binary appears as `console.error` in the
+  browser, which makes the slower build the better debugger. `./ui-wasm/serve.sh`
+  also injects a poller that reloads the tab when a new bundle lands and logs
+  it there, so the console is where both the errors and the reloads show up.
+  Reading it is the user's, like the screenshots — ask them what it says.
 
 - **Do not take the engine's port.** To exercise engine changes, run a second
   one beside the service rather than stopping it:
@@ -427,6 +489,32 @@ which is why the comparison is against the generation link rather than the
 store path. Without this the icon kept launching the last switched-in build
 while a fresh one sat in the tree, and the two windows are indistinguishable.
 
+**A panel launcher can bypass all of that, and silently.** Xfce *copies* a
+`.desktop` into `~/.config/xfce4/panel/launcher-N/` when you drag one onto the
+panel, freezing whatever `Exec` it held at that moment. A copy made before this
+wrapper existed holds a raw store path, so the icon starts that one build for
+ever — through switches, through rebuilds, and regardless of `devBuild`. The
+module's entry is right; the panel never reads it. This cost an hour of "the
+buttons are not showing" against a window from a store path built earlier the
+same afternoon.
+
+`just which` reports it, beside the same question for the service.
+
+**And on this machine it is not a fossil - it is declared.** The panel
+launcher is written by `~/.config/home-manager/modules/nixdash.nix`, whose
+entry is `Exec=env NIXDASH_PORT=… ${lib.getExe cfg.ui.package}` - the store
+path - and whose activation block rewrites that file on every switch. So
+correcting the file by hand lasts until the next `home-manager switch` and no
+longer. That module's comment says it carries the store path "as the menu
+entry does", and the menu entry does not: `launcherPath` above is the profile
+path, which is the whole reason the wrapper can prefer a newer build.
+
+The fix is therefore one line in that module - point its `Exec` at
+`${config.home.profileDirectory}/bin/nixdash-ui-launch` instead of at
+`lib.getExe cfg.ui.package` - after which the icon goes through the
+newer-wins wrapper like the menu entry. Repointing the file by hand, plus
+`xfce4-panel -r`, is the stopgap until then.
+
 **This repo contains no `home.nix`** — it ships `nix/hm-module.nix`, and the
 file that imports it lives outside the tree: `~/.config/home-manager/home.nix`
 (standalone home-manager, which is why the deploy command is `home-manager
@@ -449,6 +537,14 @@ A changed service keeps running the **old** build until restarted, which the
   polkit prompt.
 - `POST /api/actions/{id}/run` takes **no body**: the caller names an action,
   never a command, so the executable set is fixed at compile time.
+- `POST /api/builds/{id}/run` is the same contract for the Dev page's "lines
+  in full" board: no body, an id from the compile-time list in
+  `engine/src/builds.rs`, never a command. It is a separate endpoint rather
+  than more actions for two reasons. `Action::why` must say why something is
+  offered *now*, and "you could rebuild the window" is true every minute of
+  every day; and actions are derived from live state, so running one 404s once
+  the condition clears - which for an always-visible Run button would mean
+  failing whenever the system was healthy.
 - `POST /api/settings` does take a body, but only a key from a fixed list and
   a range- or enum-checked value. It writes exactly one generated file and
   rewrites it whole — it never parses or patches hand-written Nix.

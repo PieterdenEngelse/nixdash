@@ -9,17 +9,35 @@ use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QQuickStyle, QString, Q
 /// Normally the Qt resource system, compiled in by `build.rs` - which is why
 /// a QML edit needs a rebuild and a reopen, as the Dev page says.
 ///
-/// With `NIXDASH_QML_DIR` set, it is read from that directory instead, and
-/// then a QML edit needs neither: relaunching the same binary picks up the
-/// new file. `just watch` is that loop. The binary is unchanged, so this is
-/// not a second build - it is the same build reading its QML from somewhere
-/// else.
+/// With `NIXDASH_QML_DIR` set, **`Main.qml` alone** is read from that
+/// directory instead. An edit to that one file then needs no rebuild:
+/// relaunching the same binary picks it up.
 ///
-/// `Main.qml` carries `import nixdash`, which is what makes this work: the
+/// It does NOT extend to the other components, and this is the trap. Qt gives
+/// an explicit module import precedence over the implicit same-directory one,
+/// and `Main.qml` carries `import nixdash` - so `DevPage`, `ConfigSection`
+/// and every other sibling resolve to the **compiled-in** module types, not
+/// to the files next to the `Main.qml` that was just loaded. Editing one of
+/// them and relaunching shows you the previous build with no error of any
+/// kind, which is indistinguishable from an edit that did nothing.
+///
+/// Verified twice over, because the mechanism is not guessable from the code:
+/// a marker string planted in three files showed up only for `Main.qml`, and
+/// separately, `ConfigSection.qml` made syntactically invalid in the override
+/// directory did not stop the app starting - it was never parsed.
+///
+/// One exception, and it is the useful one: a **new** `.qml` not in the
+/// bundle DOES load from the directory, because the module has no name there
+/// to shadow. CLAUDE.md tabulates all three cases.
+///
+/// So `import nixdash` is what makes the file:// document work at all - the
 /// Rust-defined `Dash` type is registered by cxx-qt at startup rather than
-/// living in the resource bundle, so it resolves for a file:// document too.
-/// Sibling components resolve twice over - the directory is imported
-/// implicitly, and they are module types as well.
+/// living in the bundle - and is also why the override stops at one file.
+/// An earlier version of this comment said siblings "resolve twice over",
+/// which is true and useless: it does not say which resolution wins.
+///
+/// A component edit needs `cargo build -p nixdash-ui` - 2m 15s, measured.
+/// `just watch-desktop` runs that build on every change for this reason.
 ///
 /// Not in-process reload: `cxx-qt-lib` 0.10 exposes `load` and `loadData` and
 /// no `clearComponentCache`, so re-reading QML inside a running engine would

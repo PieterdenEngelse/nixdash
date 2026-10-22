@@ -41,26 +41,42 @@ Rectangle {
     /// a row carrying any of those grows an info button, and one carrying
     /// none does not (InfoButton hides itself when it has nothing to say).
     ///
-    /// A row may also carry `buildId`, which grows a Run button beside its
-    /// info button. The id names something the app can run; this component
-    /// never holds a command, and the signal below carries the id and nothing
-    /// else - see the note on runRequested.
+    /// A row may also carry `buildId`, which grows an action button beside
+    /// its info button. The id names something the app can run; this
+    /// component never holds a command, and the signal below carries the id
+    /// and nothing else - see the note on runRequested.
+    ///
+    /// `runLabel` names the button, defaulting to "Run". A row should say
+    /// what it does rather than take the default: a button reading Run on a
+    /// row that compiles for four minutes, and one on a row that starts a
+    /// server, are two different promises in the same word.
     property var rows: []
 
     /// Explains the section as a whole, on the title line, for a tile whose
     /// rows each make sense alone while the grouping is the part that needs
     /// saying. Optional in the same way the rows are: set none of these and
     /// the title has no button, exactly as before.
+    ///
+    /// `sections` adds tabs to that panel, exactly as a row's does. It is
+    /// here because the alternative was a longer `what` - and a body that
+    /// has run out of room is supposed to grow a tab rather than more
+    /// characters, which a section's panel could not do until now.
     property string what: ""
     property string why: ""
+    property var sections: []
     property string ifWrong: ""
+
+    /// A row's provenance link was clicked, carrying that row's `linkId`.
+    /// The page decides what it means; see the note where it is rendered.
+    signal linkActivated(string id)
 
     /// Reserved for the button column, so no text runs under it.
     readonly property int infoWidth: style.infoSize + 8
 
-    /// Width a Run button takes, reserved only on a section that has one.
+    /// Width an action button takes, reserved only on a section that has
+    /// one. Sized for the longest label in use ("Switch"), not for "Run".
     /// Sections without runnable rows keep exactly the text width they had.
-    readonly property int runWidth: 54
+    readonly property int runWidth: 64
 
     readonly property bool hasRuns: {
         for (var i = 0; i < root.rows.length; i++)
@@ -79,7 +95,8 @@ Rectangle {
     /// reference board used on several pages and holds no HTTP of its own.
     property var runState: ({})
 
-    /// A row's Run button was pressed. Carries the ROW'S ID, never a command:
+    /// A row's action button was pressed. Carries the ROW'S ID, never a
+    /// command:
     /// what gets executed is fixed where the id is defined, and the page that
     /// handles this signal posts the id alone.
     signal runRequested(string buildId)
@@ -152,6 +169,51 @@ Rectangle {
         return out
     }
 
+    /// Gap between the end of the longest line and the button column.
+    readonly property int buttonGap: 8
+
+    /// Right edge of the widest line, in body coordinates.
+    ///
+    /// Asked of the document, like every other position here: the end of
+    /// paragraph i is `offsets[i+1] - 1`, the index of its separator, so the
+    /// cursor rectangle there sits just past the last character.
+    ///
+    /// A WRAPPED paragraph counts as the full width, which is the whole
+    /// subtlety. Its end position is near the start of its last visual line,
+    /// so taking that as the right edge would read a long wrapped row as a
+    /// short one and park the buttons on top of the text above.
+    readonly property real textRight: {
+        var dependency = body.text
+        var moved = root.relayout
+        var len = body.length
+        var widest = 0
+        for (var i = 0; i < root.offsets.length; i++) {
+            var start = root.offsets[i]
+            if (start === undefined || start > len)
+                continue
+            var end = (i + 1 < root.offsets.length) ? root.offsets[i + 1] - 1 : len
+            if (end < start || end > len)
+                continue
+            var rs = body.positionToRectangle(start)
+            var re = body.positionToRectangle(end)
+            if (re.y > rs.y)
+                return body.width
+            if (re.x > widest)
+                widest = re.x
+        }
+        return widest
+    }
+
+    /// Left edge of the button column: hugging the text, never past the room
+    /// reserved for it.
+    ///
+    /// The clamp is what makes this safe to change. `col.x + body.width` is
+    /// exactly where the buttons used to start, so a section whose lines fill
+    /// the width lays out precisely as before, and only one with room to
+    /// spare pulls them in.
+    readonly property real buttonsLeft: Math.min(col.x + root.textRight + root.buttonGap,
+                                                 col.x + body.width)
+
     implicitHeight: col.implicitHeight + 24
     radius: 8
     color: palette.base
@@ -207,7 +269,17 @@ Rectangle {
             if (r.source)
                 h += "<div>" + root.pad(root.labelWidth)
                    + "<span style='color:" + style.textMuted + "'>&#8627; "
-                   + body.esc(r.source) + "</span></div>"
+                   + body.esc(r.source) + "</span>"
+                   // A row may end its provenance with one link. The href is
+                   // an ID this component knows nothing about: it is handed
+                   // straight back out through linkActivated, so what a link
+                   // MEANS stays with the page that wrote the row, and this
+                   // file keeps holding no commands and no destinations.
+                   + (r.linkText
+                      ? " <a href='" + body.esc(String(r.linkId)) + "' style='color:"
+                        + style.link + "'>" + body.esc(r.linkText) + "</a>"
+                      : "")
+                   + "</div>"
             // A blank line between items, so a row and its provenance read as
             // one thing rather than the list reading as one block. Not after
             // the last: that would be padding inside the tile's own margin.
@@ -267,6 +339,8 @@ Rectangle {
             // Word boundaries first, mid-word only when a run has none -
             // which is every store path.
             wrapMode: TextEdit.Wrap
+            // Not openUrlExternally: these hrefs are ids, not addresses.
+            onLinkActivated: function(id) { root.linkActivated(id) }
         }
 
         // What the last run actually did, in full. The dot on the button says
@@ -287,7 +361,9 @@ Rectangle {
     // so it is positioned the same way the rows below are: by asking the
     // document where that paragraph starts, never by predicting it.
     InfoButton {
-        x: root.width - col.x - width
+        // Same column as the rows below, so the card has one button edge
+        // rather than one per line length.
+        x: root.buttonsLeft + (root.hasRuns ? root.runWidth : 0)
         y: {
             var dependency = body.text
             var moved = root.relayout
@@ -300,6 +376,7 @@ Rectangle {
         what: root.what
         why: root.why
         ifWrong: root.ifWrong
+        sections: root.sections
     }
 
     // One per runnable row, sitting just left of that row's info button and
@@ -313,10 +390,11 @@ Rectangle {
         model: root.rows
 
         Item {
+            id: runCell
             visible: !!modelData.buildId
             width: root.runWidth
             height: run.height
-            x: root.width - col.x - root.infoWidth - width
+            x: root.buttonsLeft
             // Same dependency reads as the info buttons below: text, relayout
             // and length are touched explicitly so this re-runs when the
             // block reflows, which a binding over a function call alone does
@@ -332,6 +410,9 @@ Rectangle {
                 return col.y + r.y + Math.max(0, (r.height - height) / 2)
             }
 
+            // Named, and read through the name rather than through `parent`:
+            // a delegate's parent is a plain QQuickItem as far as the linter
+            // can tell, so `parent.st` is an unresolvable member.
             readonly property var st: root.runState[modelData.buildId]
                                       ? root.runState[modelData.buildId] : ({})
 
@@ -348,11 +429,17 @@ Rectangle {
                 // there is something to stop - a button that offers to stop a
                 // thing that is not running would be a reading the app never
                 // took.
-                readonly property bool stopping: modelData.stoppable
+                // Coerced with !!, because the chain yields `undefined` for
+                // every row that carries no `stoppable` - and assigning that
+                // to a bool is an error Qt reports once per row.
+                readonly property bool stopping: !!(modelData.stoppable
                                                  && root.runState[modelData.buildId]
-                                                 && root.runState[modelData.buildId].up
-                text: parent.st.running ? "…" : (stopping ? "Stop" : "Run")
-                enabled: !parent.st.running
+                                                 && root.runState[modelData.buildId].up)
+                text: runCell.st.running
+                      ? "…"
+                      : (stopping ? "Stop"
+                                  : (modelData.runLabel ? modelData.runLabel : "Run"))
+                enabled: !runCell.st.running
                 font.pixelSize: style.fontBody
                 onClicked: stopping ? root.stopRequested(modelData.buildId)
                                     : root.runRequested(modelData.buildId)
@@ -361,15 +448,15 @@ Rectangle {
                 // for a sentence here and the sentence belongs in the result
                 // line under the board, which says what actually happened.
                 Rectangle {
-                    visible: parent.parent.st.text !== undefined
-                             && !parent.parent.st.running
+                    visible: runCell.st.text !== undefined
+                             && !runCell.st.running
                     width: 6
                     height: 6
                     radius: 3
                     anchors.verticalCenter: parent.verticalCenter
                     anchors.left: parent.left
                     anchors.leftMargin: 4
-                    color: parent.parent.st.ok ? style.okDot : style.badDot
+                    color: runCell.st.ok ? style.okDot : style.badDot
                 }
             }
         }
@@ -383,7 +470,7 @@ Rectangle {
         model: root.rows
 
         InfoButton {
-            x: root.width - col.x - width
+            x: root.buttonsLeft + (root.hasRuns ? root.runWidth : 0)
             // body.text, root.relayout and body.length are read explicitly
             // so this re-runs when the block relays out - a binding over a
             // function call alone does not notice that the rows moved, and

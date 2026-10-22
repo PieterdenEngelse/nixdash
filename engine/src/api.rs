@@ -12,7 +12,9 @@ use tower_http::{
     trace::TraceLayer,
 };
 
-use crate::{actions::Actions, registry::Registry};
+use std::sync::{Arc, Mutex};
+
+use crate::{actions::Actions, builds, registry::Registry};
 
 /// Router state: panels to read, actions to suggest and run.
 #[derive(Clone)]
@@ -22,6 +24,13 @@ pub struct AppState {
     /// The port actually bound, so the settings endpoint can report what is
     /// live alongside what is declared.
     pub port: u16,
+    /// The dev engine this service started, if it started one.
+    ///
+    /// Only ever used to answer "can we stop it", never to answer "is it
+    /// running" - that is a probe. A remembered pid does not survive a
+    /// restart of this service, and a dev engine does, so believing the pid
+    /// would report a running engine as stopped.
+    pub dev_engine: Arc<Mutex<Option<u32>>>,
 }
 
 pub fn router(registry: Registry) -> Router {
@@ -32,6 +41,7 @@ pub fn router(registry: Registry) -> Router {
             .ok()
             .and_then(|p| p.parse().ok())
             .unwrap_or(3100),
+        dev_engine: Arc::new(Mutex::new(None)),
     })
 }
 
@@ -84,8 +94,12 @@ pub fn router_with(state: AppState) -> Router {
         // axum 0.8 path params are {id}, not :id
         .route("/api/panels/{id}", get(panel_history))
         .route("/api/actions/{id}/run", post(run_action))
+        .route("/api/builds", get(list_builds))
+        .route("/api/builds/{id}/run", post(run_build))
+        .route("/api/builds/{id}/stop", post(stop_build))
         .route("/api/settings", get(list_settings).post(write_setting))
         .route("/api/settings/preview", post(preview_setting))
+        .route("/api/justfile", get(read_justfile))
         .route("/api/devshell", get(list_devshell).post(toggle_devshell))
         .route("/api/system", get(list_system).post(toggle_system))
         .layer(TraceLayer::new_for_http())
@@ -162,6 +176,262 @@ async fn run_action(
         "outcome": outcome,
         "ok": outcome.succeeded(),
     })))
+}
+
+/// State of the Dev page's build lines.
+///
+/// Only the dev engine has a state to report; the rest are commands that run
+/// and finish, and inventing a state for them would be a reading the app
+/// never took.
+async fn list_builds(State(state): State<AppState>) -> Json<Value> {
+    let ours = *state.dev_engine.lock().expect("dev_engine mutex");
+    let dev = tokio::task::spawn_blocking(move || builds::probe(ours.is_some()))
+        .await
+        .unwrap_or(builds::DevEngine::Stopped);
+    Json(json!({
+        "builds": builds::all().iter().map(|b| json!({
+            "id": b.id,
+            "label": b.label,
+            "daemon": matches!(b.execution, builds::Execution::Daemon(_)),
+        })).collect::<Vec<_>>(),
+        "dev_engine": dev,
+        "dev_port": builds::DEV_PORT,
+    }))
+}
+
+/// Run one build line.
+///
+/// Takes no body, exactly like the actions endpoint: the caller names an entry
+/// from a compile-time list, so nothing a request can say widens what is
+/// executable.
+async fn run_build(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    let build = builds::find(&id).ok_or_else(|| ApiError::NotFound(format!("no build {id}")))?;
+
+    match build.execution {
+        builds::Execution::Wait(cmd) => {
+            // Same reasoning as run_action: these block a thread for minutes.
+            let outcome = tokio::task::spawn_blocking(move || crate::actions::runner::run(&cmd))
+                .await
+                .map_err(|e| ApiError::Internal(format!("run task failed: {e}")))?;
+            Ok(Json(json!({
+                "build": build.id,
+                "label": build.label,
+                "outcome": outcome,
+                "ok": outcome.succeeded(),
+            })))
+        }
+        // A window, started and let go. Deliberately no probe and no claim
+        // about what is on screen: whether a window is actually drawn is a
+        // reading only the person at the keyboard can take.
+        builds::Execution::Detach(cmd) => {
+            let log = std::env::temp_dir().join("nixdash-window.log");
+            let spawned = tokio::task::spawn_blocking(move || {
+                crate::actions::runner::spawn_detached(&cmd, &log, &[])
+            })
+            .await
+            .map_err(|e| ApiError::Internal(format!("spawn task failed: {e}")))?;
+
+            let ok = spawned.still_running();
+            let detail = if ok {
+                "started - if no window appears, its reason is in the log".to_string()
+            } else if let Some(code) = spawned.exited {
+                format!("exited at once (status {code}) - see {}", spawned.log)
+            } else {
+                format!("nothing started - see {}", spawned.log)
+            };
+            Ok(Json(json!({
+                "build": build.id,
+                "label": build.label,
+                "ok": ok,
+                "spawn": spawned,
+                "detail": detail,
+            })))
+        }
+        // A window started, then the older ones closed - in that order.
+        builds::Execution::Replace(cmd) => {
+            // Collected BEFORE the spawn so the new window is never in the
+            // list of things to close.
+            let previous = tokio::task::spawn_blocking(builds::window_pids)
+                .await
+                .unwrap_or_default();
+
+            let log = std::env::temp_dir().join("nixdash-window.log");
+            let spawned = tokio::task::spawn_blocking(move || {
+                crate::actions::runner::spawn_detached(&cmd, &log, &[])
+            })
+            .await
+            .map_err(|e| ApiError::Internal(format!("spawn task failed: {e}")))?;
+
+            // One judgement, taken by the spawner, which watched the
+            // process rather than asking /proc whether a pid exists. The
+            // earlier version asked /proc, a zombie answered yes, and two
+            // real windows were closed for a start that never happened.
+            if !spawned.still_running() {
+                let detail = match spawned.exited {
+                    Some(code) => format!(
+                        "the new window exited at once (status {code}) - nothing was \
+                         closed; see {}",
+                        spawned.log
+                    ),
+                    None => format!(
+                        "nothing started, so nothing was closed; see {}",
+                        spawned.log
+                    ),
+                };
+                return Ok(Json(json!({
+                    "build": build.id,
+                    "label": build.label,
+                    "ok": false,
+                    "spawn": spawned,
+                    "closed": 0,
+                    "detail": detail,
+                })));
+            }
+            let pid = spawned.pid.unwrap_or(0);
+
+            let closed = tokio::task::spawn_blocking(move || builds::close_windows(&previous))
+                .await
+                .unwrap_or(0);
+
+            Ok(Json(json!({
+                "build": build.id,
+                "label": build.label,
+                "ok": true,
+                "spawn": spawned,
+                "closed": closed,
+                // Whoever pressed this is very likely one of the windows that
+                // just closed, so this reply may have nowhere to be read.
+                "detail": format!("started pid {pid}, closed {closed} older window(s)"),
+            })))
+        }
+        builds::Execution::Daemon(cmd) => {
+            // Refuse rather than start a second one. Two engines on one port
+            // means the loser dies instantly and the survivor is whichever
+            // got there first, which is not something to report as a start.
+            // `ours` from the recorded pid, not a constant: this app may
+            // have started the thing already holding the port, and reporting
+            // that as someone else's would send you looking for a terminal
+            // that does not exist.
+            let owned = state.dev_engine.lock().expect("dev_engine mutex").is_some();
+            let before = tokio::task::spawn_blocking(move || builds::probe(owned))
+                .await
+                .unwrap_or(builds::DevEngine::Stopped);
+            if before != builds::DevEngine::Stopped {
+                return Ok(Json(json!({
+                    "build": build.id,
+                    "label": build.label,
+                    "ok": false,
+                    "state": before,
+                    "detail": format!(
+                        "port {} is already taken - nothing was started",
+                        builds::DEV_PORT
+                    ),
+                })));
+            }
+
+            let log = std::env::temp_dir().join("nixdash-dev-engine.log");
+            let port = builds::DEV_PORT.to_string();
+            let spawned = tokio::task::spawn_blocking(move || {
+                crate::actions::runner::spawn_detached(&cmd, &log, &[("NIXDASH_PORT", port)])
+            })
+            .await
+            .map_err(|e| ApiError::Internal(format!("spawn task failed: {e}")))?;
+
+            if let Some(pid) = spawned.pid {
+                *state.dev_engine.lock().expect("dev_engine mutex") = Some(pid);
+            }
+
+            // The fork succeeding says nothing about the server being up, so
+            // ask the port. Retried briefly because binding is not instant,
+            // and a single immediate probe would report every healthy start
+            // as a failure.
+            let after = tokio::task::spawn_blocking(|| {
+                for _ in 0..20 {
+                    let seen = builds::probe(true);
+                    if seen != builds::DevEngine::Stopped {
+                        return seen;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(150));
+                }
+                builds::DevEngine::Stopped
+            })
+            .await
+            .unwrap_or(builds::DevEngine::Stopped);
+
+            let started = matches!(after, builds::DevEngine::Running { .. });
+            Ok(Json(json!({
+                "build": build.id,
+                "label": build.label,
+                "ok": started && spawned.error.is_none(),
+                "spawn": spawned,
+                "state": after,
+                // Named whether it worked or not: when it did not, this file
+                // is the only place the reason exists.
+                "detail": if started {
+                    format!("answering on {}", builds::DEV_PORT)
+                } else {
+                    format!(
+                        "started nothing that answers on {} - see {}",
+                        builds::DEV_PORT, spawned.log
+                    )
+                },
+            })))
+        }
+    }
+}
+
+/// Stop the dev engine, if this service is the one that started it.
+async fn stop_build(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    let build = builds::find(&id).ok_or_else(|| ApiError::NotFound(format!("no build {id}")))?;
+    if !matches!(build.execution, builds::Execution::Daemon(_)) {
+        return Err(ApiError::NotRunnable(format!(
+            "{id} runs and finishes - there is nothing to stop"
+        )));
+    }
+
+    let pid = *state.dev_engine.lock().expect("dev_engine mutex");
+    let Some(pid) = pid else {
+        // No pid is two different situations and they get two different
+        // answers. Collapsing them would report an idle port as a refusal,
+        // which is the "nothing found versus could not look" mistake.
+        let seen = tokio::task::spawn_blocking(|| builds::probe(false))
+            .await
+            .unwrap_or(builds::DevEngine::Stopped);
+        if seen == builds::DevEngine::Stopped {
+            return Ok(Json(json!({
+                "build": build.id,
+                "ok": true,
+                "detail": format!("nothing is listening on {}", builds::DEV_PORT),
+            })));
+        }
+        // Something IS there, and it is not ours. Deliberately not a
+        // kill-by-name: killing a process this app cannot account for is
+        // worse than declining and saying why.
+        return Err(ApiError::NotRunnable(format!(
+            "something is on {} that this app did not start, so it will not \
+             stop it - use the terminal it was started from",
+            builds::DEV_PORT
+        )));
+    };
+
+    match tokio::task::spawn_blocking(move || crate::actions::runner::stop(pid))
+        .await
+        .map_err(|e| ApiError::Internal(format!("stop task failed: {e}")))?
+    {
+        Ok(()) => {
+            *state.dev_engine.lock().expect("dev_engine mutex") = None;
+            Ok(Json(
+                json!({ "build": build.id, "ok": true, "stopped": pid }),
+            ))
+        }
+        Err(e) => Err(ApiError::Internal(e)),
+    }
 }
 
 /// A request to change one setting.
@@ -286,6 +556,27 @@ async fn write_setting(
 pub struct DevshellToggle {
     key: String,
     enabled: bool,
+}
+
+/// The project's `Justfile`, as it is on disk right now.
+///
+/// Read at request time rather than compiled in. The Commands board shows
+/// these recipes and a test checks the board against them, so the one thing
+/// this must not do is hand back a copy that was true when the service was
+/// built - that is the drift the board exists to catch, reintroduced one
+/// layer down.
+///
+/// A read that fails is reported as a failure, with the path and the reason.
+/// The file being absent and the file being unreadable are both "could not
+/// look", and neither is an empty Justfile.
+async fn read_justfile() -> Result<Json<serde_json::Value>, ApiError> {
+    let path = crate::builds::repo().join("Justfile");
+    let text = std::fs::read_to_string(&path)
+        .map_err(|e| ApiError::NotFound(format!("cannot read {}: {e}", path.display())))?;
+    Ok(Json(serde_json::json!({
+        "path": path.display().to_string(),
+        "text": text,
+    })))
 }
 
 fn devshell_file() -> Result<(std::path::PathBuf, String), ApiError> {

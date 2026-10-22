@@ -72,9 +72,29 @@ desktop:
 # only bites at the next real build - or in the browser. Run `just gate`.
 
 # Relaunch the desktop window whenever qml/ changes.
-watch:
+watch-desktop:
     #!/usr/bin/env bash
     set -euo pipefail
+
+    # Refuse to be the second copy of this loop.
+    #
+    # Two of these watching the same files and writing the same build tree is
+    # not a slowdown, it is a race: one rewrites _deps/cxxqt-subbuild while
+    # the other is configuring, and CMake fails inside ExternalProject with a
+    # "No such file or directory" that looks nothing like its cause. Seen on
+    # 2026-10-21 with two loops running, roughly every other build.
+    #
+    # A pid file rather than pgrep: this script's own `just` parent matches
+    # any pattern specific enough to be useful, and `kill -0` distinguishes a
+    # live holder from a stale file left by a SIGKILL.
+    lock="${XDG_RUNTIME_DIR:-/tmp}/nixdash-watch-desktop.pid"
+    if [ -e "$lock" ] && kill -0 "$(cat "$lock" 2>/dev/null)" 2>/dev/null; then
+        echo "already running as pid $(cat "$lock")"
+        echo "stop that one first:  kill $(cat "$lock")"
+        exit 1
+    fi
+    echo $$ > "$lock"
+    trap 'rm -f "$lock"' EXIT
     nix develop --command cargo build -p nixdash-ui
     echo "watching qml/ - Ctrl-C to stop"
     # Kill the window we started, by pid - not pkill by pattern, which would
@@ -89,12 +109,105 @@ watch:
         stamp=$(find qml -name '*.qml' -printf '%T@\n' | sort -n | tail -1)
         if [ "$stamp" != "$last" ]; then
             last="$stamp"
+            # Rebuild, because NIXDASH_QML_DIR only replaces Main.qml: every
+            # other component resolves to the compiled-in module, so a
+            # relaunch alone would show the PREVIOUS build of an edited
+            # ConfigPage or DevPage, silently and with no error. See the
+            # qml_url() comment in ui/src/main.rs.
+            echo "building..."
+            if ! nix develop --command cargo build -p nixdash-ui; then
+                # Keep the running window and say so. Killing it on a failed
+                # build would leave nothing on screen and the last good
+                # version lost, for a typo.
+                echo "build FAILED - the window still shows the last good build"
+                sleep 1
+                continue
+            fi
             if [ -n "$ui" ]; then kill "$ui" 2>/dev/null || true; fi
-            NIXDASH_QML_DIR="$PWD/qml" ./target/debug/nixdash-ui &
+            ./target/debug/nixdash-ui &
             ui=$!
             echo "reloaded (pid $ui)"
         fi
         sleep 1
+    done
+
+# The browser half, and a different shape of loop: the bundle cannot be
+# reloaded in place, so each save costs a real emcc build of minutes. This is
+# therefore a recipe to leave running in a pane and glance at - it prints when
+# a build starts, how long it took, and whether it failed.
+#
+# The page reloads itself once the build lands: serve.sh injects a poller that
+# watches the .wasm's Last-Modified. So the terminal says what happened and the
+# tab follows, with nothing to press in either.
+#
+# It does NOT build on startup - attaching a pane should not cost minutes. The
+# first save is the first build.
+#
+# A save during a build is picked up after it, so a flurry of edits can queue
+# one extra rebuild. And it is an emcc build on a 7GB machine: do not leave it
+# running while building something else.
+
+# Rebuild the browser UI whenever qml/ changes, reporting each build.
+watch-browser port="8099":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # Refuse to be the second copy of this loop.
+    #
+    # Two of these watching the same files and writing the same build tree is
+    # not a slowdown, it is a race: one rewrites _deps/cxxqt-subbuild while
+    # the other is configuring, and CMake fails inside ExternalProject with a
+    # "No such file or directory" that looks nothing like its cause. Seen on
+    # 2026-10-21 with two loops running, roughly every other build.
+    #
+    # A pid file rather than pgrep: this script's own `just` parent matches
+    # any pattern specific enough to be useful, and `kill -0` distinguishes a
+    # live holder from a stale file left by a SIGKILL.
+    lock="${XDG_RUNTIME_DIR:-/tmp}/nixdash-watch-browser.pid"
+    if [ -e "$lock" ] && kill -0 "$(cat "$lock" 2>/dev/null)" 2>/dev/null; then
+        echo "already running as pid $(cat "$lock")"
+        echo "stop that one first:  kill $(cat "$lock")"
+        exit 1
+    fi
+    echo $$ > "$lock"
+    trap 'rm -f "$lock"' EXIT
+
+    # One pane, one command: serve too, unless something already holds the
+    # port - in which case leave it alone, since it is probably a server you
+    # started deliberately and killing it would close the tab's supply.
+    #
+    # --quiet because the poller's HEAD every two seconds is the bulk of the
+    # access log and would bury the build reports below. Real page and module
+    # fetches still print.
+    srv=""
+    if ss -ltn 2>/dev/null | grep -q ":{{ port }} "; then
+        echo "serving already on :{{ port }} - left as it is"
+    else
+        PORT={{ port }} ./ui-wasm/serve.sh --quiet &
+        srv=$!
+        echo "serving on :{{ port }} (pid $srv)"
+    fi
+    # Only the server this recipe started is its to stop.
+    trap 'if [ -n "$srv" ]; then kill "$srv" 2>/dev/null || true; fi' EXIT
+
+    echo "watching qml/ - a save rebuilds the browser UI. Ctrl-C to stop."
+    last=""
+    while true; do
+        stamp=$(find qml -name '*.qml' -printf '%T@\n' | sort -n | tail -1)
+        if [ "$stamp" != "$last" ]; then
+            if [ -n "$last" ]; then
+                echo
+                echo "$(date +%H:%M:%S) rebuilding the browser UI ..."
+                start=$SECONDS
+                if nix develop .#wasm --command bash ui-wasm/build.sh; then
+                    echo "$(date +%H:%M:%S) built in $((SECONDS - start))s - the open tab reloads itself"
+                else
+                    echo "$(date +%H:%M:%S) BUILD FAILED - the tab keeps the last good bundle"
+                fi
+            fi
+            last="$stamp"
+        fi
+        sleep 2
     done
 
 # Never takes :3100: stopping the service blanks the app you are looking at,
@@ -135,8 +248,177 @@ deploy:
 # binary and rewrites the unit, but leaves the old process serving.
 
 # Show which binary the service is actually running.
+# Run the window that is already built, and build nothing.
+#
+# The only line on the Dev page's board that is not a build, and it earns its
+# place because "which build am I looking at" is the most expensive question in
+# this project. The panel icon can be pinned to a store path, the installed
+# binary and the tree binary are indistinguishable on screen, and `just
+# desktop` rebuilds before you can look - so none of them answer *what do I
+# have right now*. This runs exactly what is in target/debug, by path.
+#
+# Deliberately no NIXDASH_QML_DIR. It redirects Main.qml alone, so for any
+# other component it shows the PREVIOUS build with no error of any kind - see
+# qml_url() in ui/src/main.rs. Putting it here would enshrine that trap.
+run:
+    ./target/debug/nixdash-ui
+
+# One window, this build, nothing else of mine in the way.
+#
+# The convenience form of `run`, written after an afternoon of reading the
+# wrong window: three were open at once - the installed build the panel icon
+# had pinned to a store path, a dev build, and a browser tab - and nothing on
+# screen said which was which. This closes every nixdash window it can
+# account for, names each one, and starts exactly one.
+#
+# What it will NOT kill, deliberately:
+#
+#   · a watch loop. It is deliberate, and it owns a window it will relaunch.
+#   · whatever holds :3100. That is the service this window talks to.
+#   · a dev engine on :3199. You started it to compare against something.
+#
+# Those are reported instead - the same stance as
+# hooks/nixdash-stray-check.sh, which says in its own comments that a check
+# firing on normal work is a check that gets ignored.
+#
+# Windows are matched by resolving /proc/PID/exe, not by name: the installed
+# binary runs as `.nixdash-ui-wrapped`, comm is truncated to 15 characters,
+# and a pattern loose enough to catch both also catches this script.
+fresh:
+    #!/usr/bin/env bash
+    set -uo pipefail
+
+    closed=0
+    for pid in $(pgrep -f nixdash-ui 2>/dev/null); do
+        exe=$(readlink -f "/proc/$pid/exe" 2>/dev/null) || continue
+        # readlink appends " (deleted)" when the binary has been replaced
+        # underneath a running process - which is the commonest stale window
+        # of all: you rebuilt, and that window is still showing the build
+        # that no longer exists on disk. Stripping it is load-bearing, not
+        # tidiness; without it the one window you most want closed is the one
+        # that gets skipped.
+        stale=""
+        case "$exe" in
+            *" (deleted)") exe="${exe% (deleted)}"; stale=" - running a build since replaced" ;;
+        esac
+        case "$exe" in
+            */target/debug/nixdash-ui|*/bin/.nixdash-ui-wrapped|*/bin/nixdash-ui) ;;
+            *) continue ;;
+        esac
+        echo "closing window pid $pid  ($exe)$stale"
+        kill "$pid" 2>/dev/null && closed=$((closed + 1))
+    done
+    [ "$closed" -eq 0 ] && echo "no windows were open"
+
+    # Reported, never killed. Each of these is something you meant to start.
+    for loop in watch-desktop watch-browser; do
+        lock="${XDG_RUNTIME_DIR:-/tmp}/nixdash-$loop.pid"
+        if [ -e "$lock" ] && kill -0 "$(cat "$lock" 2>/dev/null)" 2>/dev/null; then
+            echo "note: $loop is running as pid $(cat "$lock") - it will relaunch its own window"
+        fi
+    done
+    if curl -sf --max-time 1 http://127.0.0.1:3199/health >/dev/null 2>&1; then
+        echo "note: a second engine is answering on :3199"
+    fi
+
+    # The build is not this recipe's job - `just desktop` builds and launches,
+    # and conflating the two is how you end up unsure whether what you are
+    # looking at was just compiled.
+    echo "starting ./target/debug/nixdash-ui (built $(date -r ./target/debug/nixdash-ui +%H:%M))"
+    exec ./target/debug/nixdash-ui
+
 which:
-    @echo "unit ExecStart:"
-    @systemctl --user show -p ExecStart --value nixdash-engine.service
-    @echo "process serving:"
-    @readlink /proc/$(systemctl --user show -p MainPID --value nixdash-engine.service)/exe
+    #!/usr/bin/env bash
+    set -uo pipefail
+    echo "unit ExecStart:"
+    systemctl --user show -p ExecStart --value nixdash-engine.service
+    echo "process serving:"
+    readlink /proc/$(systemctl --user show -p MainPID --value nixdash-engine.service)/exe
+
+    # The same question for the window, which has its own way of answering
+    # wrong. Xfce COPIES a .desktop into ~/.config/xfce4/panel/launcher-N/
+    # when you drag one onto the panel, freezing that moment's Exec. A store
+    # path frozen there pins one build for ever and the newer-wins wrapper is
+    # never consulted - so the icon kept starting a build from hours earlier
+    # while every rebuild landed in target/debug, with the two windows
+    # indistinguishable. Printed here because nothing else shows it: the
+    # module's own entry is correct, and the panel's copy is outside Nix.
+    #
+    # *.desktop does not match a .desktop.bak-NNN, so backups are skipped by
+    # the glob rather than by filtering.
+    # Everything of yours that outlives a command, in one place.
+    #
+    # Reconstructing this by hand with ss and /proc is what most of
+    # 2026-10-21 went into: a window from a store path the panel had pinned, a
+    # server from the previous day serving a half-written bundle, two watch
+    # loops racing, and an orphaned dev engine. Each was invisible, and each
+    # looked exactly like the thing it was not.
+    echo
+    echo "watch loops:"
+    any=""
+    for loop in watch-desktop watch-browser; do
+        lock="${XDG_RUNTIME_DIR:-/tmp}/nixdash-$loop.pid"
+        locked=""
+        if [ -e "$lock" ] && kill -0 "$(cat "$lock" 2>/dev/null)" 2>/dev/null; then
+            locked=$(cat "$lock")
+            echo "  $loop: pid $locked"
+            any=yes
+        fi
+        # Looked for by process as WELL as by lock, because the lock only
+        # exists for a loop started after the single-instance guard was
+        # added. The first version of this check asked the lock alone and
+        # reported "none" while two loops were running - a monitor
+        # reassuring you about something it never looked at, which is the one
+        # failure this project treats as worse than no monitor at all.
+        for pid in $(ps -eo pid=,args= | grep -E "^[[:space:]]*[0-9]+ just $loop([[:space:]]|\$)" | awk '{print $1}'); do
+            [ "$pid" = "$locked" ] && continue
+            echo "  $loop: pid $pid  (no lock - predates the single-instance guard)"
+            any=yes
+        done
+    done
+    [ -n "$any" ] || echo "  none"
+
+    echo "browser UI server:"
+    srv=$(ss -ltnp 2>/dev/null | grep ':8099 ' | grep -oP 'pid=\K[0-9]+' | head -1)
+    if [ -n "$srv" ]; then
+        echo "  pid $srv serving $(readlink /proc/$srv/cwd 2>/dev/null)"
+        # The tree it serves is the thing that goes wrong, not the port.
+        case "$(readlink /proc/$srv/cwd 2>/dev/null)" in
+            */ui-wasm/current) ;;
+            *) echo "  ^ not the published tree - a reload gets whatever is in there" ;;
+        esac
+    else
+        echo "  none on :8099"
+    fi
+
+    echo "second engine:"
+    if curl -sf --max-time 1 http://127.0.0.1:3199/health >/dev/null 2>&1; then
+        echo "  answering on :3199"
+    else
+        echo "  none on :3199"
+    fi
+
+    echo "windows:"
+    seen=""
+    for pid in $(pgrep -f nixdash-ui 2>/dev/null); do
+        exe=$(readlink "/proc/$pid/exe" 2>/dev/null) || continue
+        stale=""
+        case "$exe" in
+            *" (deleted)") exe="${exe% (deleted)}"; stale="  (build since replaced)" ;;
+        esac
+        case "$exe" in
+            */target/debug/nixdash-ui) echo "  pid $pid  dev build$stale"; seen=yes ;;
+            */bin/.nixdash-ui-wrapped|*/bin/nixdash-ui) echo "  pid $pid  installed$stale"; seen=yes ;;
+        esac
+    done
+    [ -n "$seen" ] || echo "  none"
+
+    echo
+    echo "panel launchers pinned to a store path:"
+    pinned=$(grep -s -l '^Exec=.*/nix/store/' ~/.config/xfce4/panel/launcher-*/*.desktop)
+    if [ -n "$pinned" ]; then
+        echo "$pinned" | sed 's|^|  |'
+        echo "  ^ repoint Exec at ~/.nix-profile/bin/nixdash-ui-launch , then: xfce4-panel -r"
+    else
+        echo "  none - every launcher goes through a stable path"
+    fi

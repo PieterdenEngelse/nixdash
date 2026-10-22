@@ -28,11 +28,11 @@
 //!
 //! **An ellipsis means "abbreviated on purpose".** A column is narrow and
 //! some rows show `nix develop .#wasm … build.sh` rather than the whole line,
-//! with the full form on the "lines in full" board. `…` is the marker for
+//! with the full form on the "Commands" board. `…` is the marker for
 //! that, and a value carrying one is skipped rather than being made to match
 //! something it is openly not.
 //!
-//! Earlier this scanned only the "lines in full" board, so board 4's command
+//! Earlier this scanned only the "Commands" board, so board 4's command
 //! column was never read at all. Narrow tests miss what is next to them.
 //!
 //! Lives in the engine's test directory for the dull reason that this is the
