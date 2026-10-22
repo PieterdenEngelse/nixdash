@@ -31,6 +31,7 @@ default:
 # `gate-all`.
 
 # Gate a change to qml/, docs, or Rust strings. Seconds.
+[group('quality')]
 gate:
     cargo fmt --all
     cargo test -p nixdash-engine
@@ -41,6 +42,7 @@ gate:
 # why it is separate from `gate` rather than part of it.
 
 # Gate a change to Rust code paths: the above, plus clippy.
+[group('quality')]
 gate-rust: gate
     cargo clippy -p nixdash-engine --all-targets -- -D warnings
 
@@ -48,6 +50,7 @@ gate-rust: gate
 # `gate` does not run it.
 
 # Gate everything, UI crate included. The slow, thorough one.
+[group('quality')]
 gate-all:
     nix develop --command bash -c 'cargo fmt --all && cargo test --all'
     ./qml-check
@@ -56,12 +59,18 @@ gate-all:
 # deploy for that.
 
 # Build this window and run it against the engine already on :3100.
+[group('window')]
 desktop:
     nix develop --command bash -c 'cargo build -p nixdash-ui && ./target/debug/nixdash-ui'
 
-# Builds once, then relaunches on every change under qml/ - no rebuild per
-# edit, because NIXDASH_QML_DIR makes the binary read the directory instead of
-# its compiled-in copy. Ctrl-C to stop.
+# Rebuilds and relaunches on every change under qml/. Ctrl-C to stop.
+#
+# It used to only relaunch, on the belief that NIXDASH_QML_DIR made the binary
+# read the directory instead of its compiled-in copy. It redirects Main.qml
+# alone: every other component resolves to the compiled-in module, so a
+# relaunch showed the PREVIOUS build of an edited ConfigSection or DevPage,
+# silently and with no error anywhere. The build is not optional, which is
+# what makes this ~2 min an iteration rather than a tenth of a second.
 #
 # Relaunch rather than in-process reload: cxx-qt-lib 0.10 has no
 # clearComponentCache binding, and a fresh process cannot leave half a
@@ -71,7 +80,8 @@ desktop:
 # a NEW .qml renders without being in either build.rs list, so the omission
 # only bites at the next real build - or in the browser. Run `just gate`.
 
-# Relaunch the desktop window whenever qml/ changes.
+# Rebuild and relaunch the desktop window whenever qml/ changes. ~2 min each.
+[group('window')]
 watch-desktop:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -148,6 +158,7 @@ watch-desktop:
 # running while building something else.
 
 # Rebuild the browser UI whenever qml/ changes, reporting each build.
+[group('browser')]
 watch-browser port="8099":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -218,6 +229,7 @@ watch-browser port="8099":
 # and engine/tests/qml_command_lines.rs can check that it does.
 
 # Run a second engine beside the service, on another port.
+[group('engine')]
 engine port="3199":
     cargo build -p nixdash-engine && NIXDASH_PORT={{ port }} ./target/debug/nixdash-engine
 
@@ -226,6 +238,7 @@ engine port="3199":
 # a deploy.
 
 # Rebuild the browser UI.
+[group('browser')]
 browser:
     nix develop .#wasm --command bash ui-wasm/build.sh
 
@@ -233,6 +246,7 @@ browser:
 # instead of pairing a new .wasm with cached glue.
 
 # Serve the browser UI on :8099.
+[group('browser')]
 serve port="8099":
     PORT={{ port }} ./ui-wasm/serve.sh
 
@@ -241,6 +255,7 @@ serve port="8099":
 # while reporting active. Never reach for this just to see a change.
 
 # Install, so the service and the launcher run the new build.
+[group('install')]
 deploy:
     home-manager switch
 
@@ -259,6 +274,7 @@ deploy:
 # qml_url() in ui/src/main.rs. Putting it here would enshrine that trap.
 
 # Run the window that is already built, and build nothing.
+[group('window')]
 run:
     ./target/debug/nixdash-ui
 
@@ -283,6 +299,7 @@ run:
 # and a pattern loose enough to catch both also catches this script.
 
 # One window, this build, nothing else of mine in the way.
+[group('window')]
 fresh:
     #!/usr/bin/env bash
     set -uo pipefail
@@ -326,7 +343,8 @@ fresh:
     echo "starting ./target/debug/nixdash-ui (built $(date -r ./target/debug/nixdash-ui +%H:%M))"
     exec ./target/debug/nixdash-ui
 
-# Show which binary the service is actually running.
+# What of mine is running: the service, loops, server, engines, windows, launchers.
+[group('inspect')]
 which:
     #!/usr/bin/env bash
     set -uo pipefail
