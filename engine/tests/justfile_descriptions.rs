@@ -77,6 +77,14 @@ fn recipes() -> Vec<(usize, String, Vec<String>)> {
             block.push(comment.trim().to_string());
             continue;
         }
+        // An attribute - `[group('window')]`, `[private]` - sits between the
+        // comment and the recipe and is part of the declaration, not a break
+        // in it. `just` still prints the comment above it, so neither may
+        // this: treating one as a block-ender reported eight recipes as
+        // undocumented the day attributes were introduced.
+        if line.starts_with('[') {
+            continue;
+        }
         if line.trim().is_empty() || line.starts_with(char::is_whitespace) {
             block.clear();
             continue;
