@@ -251,6 +251,21 @@ engine port="3199":
 # It builds and launches nothing. A window is yours to open - `just fresh`
 # after this - and the served tab reloads itself when the bundle lands.
 
+# Build both UIs, then open the window: the terminal's version of `both`.
+#
+# Two recipes because a button and a terminal want different things. The Dev
+# page's Build posts an id and waits for an exit code - it must not open a
+# window, and every info panel on that board promises it will not. Typing
+# this, you want the thing you just built in front of you.
+#
+# A dependency list, not a copy: `see: both fresh` runs the two recipes that
+# already exist. `fresh` execs the window, so this holds the terminal for as
+# long as the window lives, exactly as `fresh` alone does.
+
+# Build both UIs, then open the window.
+[group('window')]
+see: both fresh
+
 # Build both UIs from the shared qml/. About eight minutes.
 [group('window')]
 both:

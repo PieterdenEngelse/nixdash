@@ -40,11 +40,20 @@ nix develop --command just --list   # from outside the shell; `just` lives in it
 | `just fresh` | close every nixdash window, then run the one in `target/debug` | instant |
 | `just engine` | a second engine on :3199, beside the service | seconds |
 | `just browser` | rebuild the browser UI (emcc + wasm32 target) | minutes |
+| `just both` | build **both** UIs from the shared `qml/`, launching neither | ~8 min |
+| `just see` | `both`, then open the window - the terminal's version of it | ~8 min |
 | `just serve` | serve the browser UI on :8099 | — |
 | `just deploy` | `home-manager switch`, then the restart it prints | ~15 min |
 | `just watch-desktop` | rebuild **and** relaunch the window on every `qml/` change | ~2 min each |
 | `just watch-browser` | rebuild the browser UI on every `qml/` change, reporting each build | minutes each |
 | `just which` | which binary the service is **actually** running | — |
+
+`both` and `see` differ only in whether a window opens, and that is the
+difference between a button and a terminal. The Dev page's Build posts an id
+and waits for an exit code - it must not open a window, and the info panels
+on that board promise it will not. Typing it, you want what you just built in
+front of you. `see` is `both fresh` as a dependency list, not a second copy
+of either.
 
 Two things the recipes deliberately do not hide. `just desktop` wraps `nix develop`
 because `QMAKE` is only set inside it; `just engine` does not, because the
