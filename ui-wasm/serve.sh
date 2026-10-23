@@ -41,7 +41,12 @@ PORT="${PORT:-8099}"
 # Three answers, because they need three different actions: it is us and
 # correct (nothing to do), it is us and serving the wrong tree (replace it),
 # or it is not ours at all (your call, and we will not touch it).
-holder=$(ss -ltnp 2>/dev/null | grep ":$PORT " | grep -oP 'pid=\K[0-9]+' | head -1)
+# `|| true` is load-bearing under `set -euo pipefail`: with the port FREE,
+# grep finds nothing and exits 1, the pipeline fails, and the script dies
+# without printing a word - which is exactly what it did, and looked like the
+# server starting and vanishing. An empty result is the ordinary case here,
+# not an error.
+holder=$(ss -ltnp 2>/dev/null | grep ":$PORT " | grep -oP 'pid=\K[0-9]+' | head -1 || true)
 if [ -n "$holder" ]; then
     hcwd=$(readlink "/proc/$holder/cwd" 2>/dev/null || true)
     hcmd=$(tr '\0' ' ' < "/proc/$holder/cmdline" 2>/dev/null || true)
@@ -51,12 +56,38 @@ if [ -n "$holder" ]; then
                 echo "already serving $root on :$PORT (pid $holder) - nothing to do"
                 exit 0
             fi
-            echo "a nixdash server already holds :$PORT (pid $holder)," >&2
-            echo "  serving: $hcwd" >&2
-            echo "  wanted:  $PWD" >&2
-            echo "It is serving a different tree, so a reload would get that one." >&2
-            echo "Replace it:  kill $holder && $0 $*" >&2
-            exit 1
+            # Ours, and serving the wrong tree. Take over rather than
+            # printing a command: the intent of running this script is "serve
+            # the current tree here", the holder is positively identified as
+            # our own server, and a stale one is actively misleading - it
+            # answers 200 with a build from another day.
+            #
+            # EXCEPT when systemd owns it. Killing a supervised process just
+            # gets it restarted, so a kill-and-bind here races the unit and
+            # loses: that unit logged 62 restarts fighting a squatter for the
+            # same port. The fix there is to tell systemd, not to fight it.
+            if grep -qs 'nixdash-serve' "/proc/$holder/cgroup"; then
+                echo "that server is nixdash-serve.service (pid $holder)," >&2
+                echo "  serving: $hcwd" >&2
+                echo "  wanted:  $PWD" >&2
+                echo "systemd owns it, so killing it only restarts it. Either:" >&2
+                echo "  systemctl --user restart nixdash-serve   # it follows current/ now" >&2
+                echo "  systemctl --user stop nixdash-serve      # then run this again" >&2
+                exit 1
+            fi
+            echo "replacing the server on :$PORT (pid $holder)," >&2
+            echo "  it was serving: $hcwd" >&2
+            kill "$holder" 2>/dev/null || true
+            # Wait for the port, rather than racing it: bind fails for a
+            # moment after the old process goes.
+            for _ in $(seq 1 40); do
+                ss -ltn 2>/dev/null | grep -q ":$PORT " || break
+                sleep 0.1
+            done
+            if ss -ltn 2>/dev/null | grep -q ":$PORT "; then
+                echo "it did not let go of :$PORT - kill -9 $holder, or use PORT=8098" >&2
+                exit 1
+            fi
             ;;
         *)
             echo ":$PORT is held by pid $holder, which is not a nixdash server:" >&2
