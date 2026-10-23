@@ -182,8 +182,28 @@ fn every_command_shown_on_the_dev_page_is_a_recipe() {
         }
         checked += 1;
 
+        // The dev-shell prefix is not part of a command's identity.
+        //
+        // `just` lives in the dev shell, so the full form of a recipe row -
+        // the one you can paste into an ordinary terminal - is
+        // `cd <repo> && nix develop --command just <name>`. That names a
+        // recipe as surely as `just <name>` does, and asking for a body line
+        // equal to it would mean inventing a recipe whose body is a way of
+        // running recipes.
+        //
+        // This was nearly an EXEMPT entry instead, which would have recorded
+        // "this line has no recipe" about a line whose recipe is in its own
+        // text. The rule is "names a recipe, however it is reached".
+        let named = value
+            .strip_prefix("cd ~/Projects/nixdash && ")
+            .unwrap_or(value.as_str());
+        let named = named
+            .strip_prefix("nix develop --command ")
+            .or_else(|| named.strip_prefix("nix develop .#wasm --command "))
+            .unwrap_or(named);
+
         // `just <name>` is satisfied by the recipe existing.
-        if let Some(rest) = value.strip_prefix("just ") {
+        if let Some(rest) = named.strip_prefix("just ") {
             let recipe = rest.split_whitespace().next().unwrap_or("");
             if names.iter().any(|n| n == recipe) {
                 continue;

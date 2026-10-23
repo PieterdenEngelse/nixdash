@@ -705,7 +705,7 @@ The <i>just file</i> link below opens the file itself." }
     one you got.<br><br>\
     <tt>just fresh</tt> is the row below: the same launch, with the stale windows \
     closed first." },
-                        { label: "fresh window", buildId: "restart-window", runLabel: "Restart", value: "just fresh",
+                        { label: "fresh window", buildId: "restart-window", runLabel: "Restart", value: "cd ~/Projects/nixdash && nix develop --command just fresh",
                           source: "closes every nixdash window, then starts the built one",
                           linkText: "just file", linkId: "justfile",
                           what: "Closes every window it can account for - naming \
@@ -726,11 +726,12 @@ The <i>just file</i> link below opens the file itself." }
                           ifWrong: "It will <b>not</b> kill a watch loop, whatever \
     holds :3100, or a second engine on :3199. Each of those is something you \
     started deliberately, so they are reported instead.<br><br>\
-    This is the one line here that needs <tt>just</tt>, which is why it is shown \
-    as a recipe name rather than in full - there is no single line to paste. And \
-    <b>just is not on PATH outside the dev shell</b>, so from an ordinary terminal \
-    it is <tt>nix develop --command just fresh</tt>. Anywhere inside the \
-    repository will do; just finds the Justfile by searching upward.<br><br>\
+    This is the one line here that is a recipe rather than a command, which is \
+    why it carries <tt>nix develop</tt>: <b>just is not on PATH outside the dev \
+    shell</b>, and the line is printed in the form that works from an ordinary \
+    terminal. The <tt>cd</tt> is for certainty rather than necessity - anywhere \
+    inside the repository will do, since just finds the Justfile by searching \
+    upward.<br><br>\
     The row above needs nothing but the path - verified with the Qt environment \
     stripped, on a display of its own: the binary finds its own plugins, so that \
     line really does work from a bare shell." }
