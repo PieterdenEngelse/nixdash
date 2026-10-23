@@ -717,10 +717,13 @@ it rebuilds first, so it cannot."
 any build the one in front of you is the old one - and two windows from \
 different builds are identical on screen. That is what <i>fresh window</i> \
 is for.<br><br>\
-A path here is this machine's, the repository at <tt>~/Projects/nixdash</tt>. \
-<tt>just</tt> is not on PATH outside the dev shell, so the one recipe-named \
-row needs <tt>nix develop --command just fresh</tt> from an ordinary \
-terminal; the rest need nothing but a path."
+<b>Every line on this board runs as printed.</b> A path in one is this \
+machine's - the repository at <tt>~/Projects/nixdash</tt> - and the lines \
+that name a recipe carry <tt>nix develop --command</tt> because \
+<tt>just</tt> lives in the dev shell and is not on PATH outside it. That \
+prefix is why they look long: it is the prerequisite, not the command.<br><br>\
+The one exception is the system switch, which needs neither - it reads \
+<tt>/etc/nixos</tt> and runs from anywhere."
                     sections: [
                         { title: "What a recipe is", body: "A <b>recipe</b> is a named \
 command kept in this project's <tt>Justfile</tt> - the same idea as a target \
@@ -864,7 +867,7 @@ step: <tt>just serve</tt> puts the built bundle on :8099, and \
                         // cost: knowing the browser is a second program does
                         // not help if acting on it means remembering a second
                         // command. This is both, in one press.
-                        { label: "both UIs", value: "just both",
+                        { label: "both UIs", value: "cd ~/Projects/nixdash && nix develop --command just both",
                           source: "one qml/ edit, both programs - about 8 minutes",
                           buildId: "both-uis", runLabel: "Build",
                           what: "Builds the window and the browser bundle \
@@ -943,7 +946,7 @@ never takes :3100 from the service."
     restarts, an engine you started earlier keeps running and is still reported - \
     honestly, as something this app no longer owns and will not stop." }
                           ] },
-                        { label: "install, user", value: "just deploy",
+                        { label: "install, user", value: "cd ~/Projects/nixdash && nix develop --command just deploy",
                           source: "1 · Changes what is installed - switch, restart, serve, redraw",
                           buildId: "install-user", runLabel: "Deploy",
                           what: "Rebuilds everything home-manager manages and \
