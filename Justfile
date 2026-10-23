@@ -250,14 +250,52 @@ browser:
 serve port="8099":
     PORT={{ port }} ./ui-wasm/serve.sh
 
-# ~15 minutes, and it prints a `systemctl --user restart` that is not
-# optional - a changed service keeps running the old binary until restarted,
-# while reporting active. Never reach for this just to see a change.
+# ~15 minutes. Never reach for this just to see a change.
+#
+# All four steps, because a switch on its own finishes none of them. It
+# installs a new engine and rewrites the unit while leaving the OLD process
+# serving - reporting active the whole time - and it writes a panel launcher
+# the panel will not re-read. Each was documented as something to run
+# afterwards, in three different places, and a step you have to remember is a
+# step that gets skipped.
+#
+# `&&` in spirit: every line is conditional on the one before, so a failed
+# switch cannot restart the service into a build that did not happen. That
+# was the argument for not running the restart automatically, and chaining
+# satisfies it rather than ignoring it.
+#
+# nixdash-serve is started only if it exists. It is the browser UI's static
+# server and it is optional - absent entirely unless
+# services.nixdash.browser.enable is set - so its absence is a configuration,
+# not a failure.
 
-# Install, so the service and the launcher run the new build.
+# Install, restart, serve, redraw: everything a new build needs.
 [group('install')]
 deploy:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    echo "== home-manager switch (~15 min)"
     home-manager switch
+
+    # Not optional, and the reason this recipe exists: a changed service keeps
+    # running the old binary until restarted, while reporting active.
+    echo "== restarting the service"
+    systemctl --user restart nixdash-engine.service
+
+    if systemctl --user cat nixdash-serve.service >/dev/null 2>&1; then
+        echo "== starting the browser UI's server"
+        systemctl --user start nixdash-serve.service
+    else
+        echo "== no nixdash-serve unit - services.nixdash.browser.enable is off"
+    fi
+
+    # Xfce COPIES a launcher's desktop file when it is dragged onto the panel,
+    # so the panel holds its own copy and will not re-read the installed one
+    # without this. The panel disappears and redraws; that is this command
+    # working, not it failing.
+    echo "== redrawing the panel"
+    xfce4-panel -r
 
 # The question behind "my change did not show up": a switch installs a new
 # binary and rewrites the unit, but leaves the old process serving.

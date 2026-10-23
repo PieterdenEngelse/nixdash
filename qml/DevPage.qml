@@ -818,21 +818,32 @@ never takes :3100 from the service."
     restarts, an engine you started earlier keeps running and is still reported - \
     honestly, as something this app no longer owns and will not stop." }
                           ] },
-                        { label: "install, user", value: "home-manager switch",
-                          source: "1 · Changes what is installed - then the systemctl --user restart it prints",
-                          buildId: "install-user", runLabel: "Switch",
+                        { label: "install, user", value: "just deploy",
+                          source: "1 · Changes what is installed - switch, restart, serve, redraw",
+                          buildId: "install-user", runLabel: "Deploy",
                           what: "Rebuilds everything home-manager manages and \
-    switches to it - not only this project. Switch performs it and stops \
-    there.",
-                          why: "<b>The restart it prints is deliberately not run.</b> \
-    A switch can legitimately fail, and restarting into a build that did not \
-    happen is worse than leaving the old one serving. It also takes about fifteen \
-    minutes, so it is never the way to see a change - the window build above is.",
-                          ifWrong: "It builds your whole user config, so an \
-    unrelated half-finished edit elsewhere fails the build - which leaves the \
-    current generation untouched rather than breaking anything. A changed \
-    background service keeps running the old build until the restart, which the \
-    build-freshness board above reports." },
+switches to it - not only this project - then finishes the three things a \
+switch starts and does not complete: restarts the background service, starts \
+the browser UI's server if you have one, and redraws the panel."
+                          ,
+                          why: "<b>A switch on its own finishes none of \
+them.</b> It installs a new service and rewrites the unit while leaving the \
+OLD process serving - reporting active the whole time - and it writes a panel \
+launcher that the panel will not re-read, because Xfce copied the file when \
+it was dragged on.<br><br>\
+Each step was written down as something to run afterwards, in three different \
+places, which is three ways to forget it. Every line is conditional on the \
+one before, so a failed switch still cannot restart the service into a build \
+that did not happen - which was the whole argument for not chaining them.",
+                          ifWrong: "<b>About fifteen minutes, and the panel \
+vanishes and comes back at the end.</b> That last part is the redraw working, \
+not failing.<br><br>\
+It builds your whole user config, so an unrelated half-finished edit \
+elsewhere fails the build - which leaves the current generation untouched \
+rather than breaking anything. It is never the way to see a change: the \
+window build is, in seconds.<br><br>\
+The browser UI's server is skipped rather than failed when there is no unit \
+for it, which is simply <tt>services.nixdash.browser.enable</tt> left off." },
                         { label: "install, system", value: "sudo nixos-rebuild switch",
                           source: "1 · Changes what is installed - /etc/nixos; --flake is implied when its flake.nix exists",
                           buildId: "install-system", runLabel: "Switch",

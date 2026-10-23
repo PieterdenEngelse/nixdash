@@ -168,13 +168,28 @@ pub fn all() -> Vec<Build> {
         Build {
             id: "install-user",
             label: "install, user",
+            // `just deploy`, not `home-manager switch`, because a switch on
+            // its own finishes none of what it starts: the old service keeps
+            // serving until restarted, and the panel keeps its own copy of
+            // the launcher. The recipe is the one definition of those four
+            // steps - running the first of them here and leaving the rest to
+            // a provenance line is how three of them came to be documented in
+            // three places and run in none.
+            //
+            // The repo, not HOME: `just` is found by its Justfile. The switch
+            // itself does not care - there is no flake in
+            // ~/.config/home-manager, so its config is read from a fixed path
+            // either way.
             execution: Execution::Wait(RunCommand {
-                program: "home-manager".into(),
-                args: vec!["switch".into()],
+                program: "nix".into(),
+                args: vec![
+                    "develop".into(),
+                    "--command".into(),
+                    "just".into(),
+                    "deploy".into(),
+                ],
                 elevate: false,
-                // Home, not the repo: this builds the whole user environment,
-                // and the config that imports this project lives outside it.
-                cwd: std::env::var("HOME").ok(),
+                cwd: Some(dir.clone()),
             }),
         },
         // Root, so pkexec and a polkit prompt. The displayed line says `sudo`
