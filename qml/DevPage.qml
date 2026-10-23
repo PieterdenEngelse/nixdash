@@ -507,7 +507,35 @@ so the slow gate would be running for the cheapest possible change. See \
                                                                 ? "unknown"
                                                                 : root.val("rust-build", "stale") === "yes"
                                                                   ? "no" : "yes",
-                          source: root.val("rust-build", "newest_source_file") }
+                          source: root.val("rust-build", "newest_source_file") },
+                        // A command among three readings, and last so the
+                        // measurements stay together: the rows above say
+                        // WHICH build is answering, and this is the one way
+                        // to make that answer be yours without installing.
+                        { label: "run from the tree", value: "r",
+                          source: "runs nixdash from the tree, and restores the service on exit",
+                          what: "A script that swaps the installed app for \
+the one in your working tree: it stops the app's background service, runs \
+the tree's own in its place, opens a window on the built binary, and \
+rebuilds the browser UI whenever you save. Ctrl-C puts the installed one \
+back.<br><br>\
+It is <b>not part of this project</b> - it lives in \
+<tt>~/.local/bin/r</tt> - which is why there is no button here to run it.",
+                          why: "The rows above say which build is answering, \
+and installing one takes about fifteen minutes. This is the short way to \
+make the answer be yours, and the only one that gets a <i>window</i> talking \
+to a tree build rather than the installed one.<br><br>\
+For most work something cheaper is right: a change you only need to see \
+drawn needs a watch loop, and one you only need to query needs a second \
+service on another port. This earns its cost when a change has to be \
+visible in the app itself.",
+                          ifWrong: "<b>While it runs, everything reading the \
+app reads your tree build</b> - including a window you already had open, \
+which will not say so. The reading above is how you tell.<br><br>\
+Ctrl-C hands the service back and says it did. If it is killed outright \
+instead, nothing is serving until \
+<tt>systemctl --user start nixdash-engine.service</tt> - the app goes blank \
+rather than stale, so it is not a silent failure." }
                     ]
                 }
 
