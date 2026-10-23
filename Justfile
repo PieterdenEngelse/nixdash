@@ -284,8 +284,14 @@ deploy:
     systemctl --user restart nixdash-engine.service
 
     if systemctl --user cat nixdash-serve.service >/dev/null 2>&1; then
-        echo "== starting the browser UI's server"
-        systemctl --user start nixdash-serve.service
+        # restart, NOT start: `start` on an already-active unit does nothing,
+        # so a switch that changed the unit left the OLD command running
+        # while systemd reported active - the same trap this recipe exists to
+        # avoid for the engine. Seen on 2026-10-23: the installed ExecStart
+        # passed the tree as an argument and the live process had no such
+        # argument for fifteen minutes.
+        echo "== restarting the browser UI's server"
+        systemctl --user restart nixdash-serve.service
     else
         echo "== no nixdash-serve unit - services.nixdash.browser.enable is off"
     fi
@@ -294,8 +300,29 @@ deploy:
     # so the panel holds its own copy and will not re-read the installed one
     # without this. The panel disappears and redraws; that is this command
     # working, not it failing.
+    #
+    # Two things make the obvious `xfce4-panel -r` wrong as the last line of a
+    # recipe:
+    #
+    #   · with a panel running it messages that panel and returns, but with
+    #     NO panel running it BECOMES the panel, in the foreground, and never
+    #     returns - so the recipe appears to hang on this step. That is the
+    #     likely case here, because restarting user services takes xfconf
+    #     down and the panel with it on this machine.
+    #   · `pgrep -x xfce4-panel` does not find it: the process runs wrapped,
+    #     so `comm` is the truncated `.xfce4-panel-wr` and only the full
+    #     command line matches.
+    #
+    # So: detect by command line, and detach either way, which leaves the
+    # panel owned by the session rather than by this terminal.
     echo "== redrawing the panel"
-    xfce4-panel -r
+    if pgrep -f 'xfce4-panel' >/dev/null 2>&1; then
+        setsid --fork xfce4-panel -r >/dev/null 2>&1 </dev/null || true
+        echo "   restarted - it blanks and redraws, which is it working"
+    else
+        echo "   no panel was running (the service restart takes it down) - starting one"
+        setsid --fork xfce4-panel >/dev/null 2>&1 </dev/null || true
+    fi
 
 # The question behind "my change did not show up": a switch installs a new
 # binary and rewrites the unit, but leaves the old process serving.
@@ -437,12 +464,28 @@ which:
     echo "browser UI server:"
     srv=$(ss -ltnp 2>/dev/null | grep ':8099 ' | grep -oP 'pid=\K[0-9]+' | head -1)
     if [ -n "$srv" ]; then
-        echo "  pid $srv serving $(readlink /proc/$srv/cwd 2>/dev/null)"
-        # The tree it serves is the thing that goes wrong, not the port.
-        case "$(readlink /proc/$srv/cwd 2>/dev/null)" in
+        # The served tree comes from the ARGUMENT when there is one, and only
+        # from cwd when there is not.
+        #
+        # Reading cwd alone was wrong the moment the unit started passing the
+        # tree as an argument: systemd resolves a symlinked WorkingDirectory
+        # once, so the unit's cwd is a release directory that no longer
+        # decides anything, and this reported the right setup as broken.
+        tree=$(tr '\0' '\n' < "/proc/$srv/cmdline" 2>/dev/null \
+               | grep -v '^--' | grep '/' | tail -1)
+        case "$tree" in
+            */serve.py|"") tree=$(readlink "/proc/$srv/cwd" 2>/dev/null); from="cwd" ;;
+            *) from="argument" ;;
+        esac
+        echo "  pid $srv serving $tree  (from its $from)"
+        case "$tree" in
             */ui-wasm/current) ;;
             *) echo "  ^ not the published tree - a reload gets whatever is in there" ;;
         esac
+        # Supervised or not changes how you replace it, so say which.
+        if grep -qs 'nixdash-serve' "/proc/$srv/cgroup"; then
+            echo "  owned by nixdash-serve.service - use systemctl, not kill"
+        fi
     else
         echo "  none on :8099"
     fi
