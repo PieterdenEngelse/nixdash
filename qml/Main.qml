@@ -794,11 +794,19 @@ window was told about.</li></ul>"
         }
     }
 
-    // One of three views: overview, a subject's panels, or config.
+    // One of four views: overview, a subject's panels, config, or dev -
+    // and dev has one subject of its own.
+    //
+    // `subject` is reused rather than given a sibling. The hierarchy is
+    // still two levels, the breadcrumb already renders "Dev > Qt" from it,
+    // and its back-click already clears it - so a second property would be
+    // a second way to say where you are, with two chances to disagree.
+    // Switching tabs clears it, which is why Dev > Qt does not survive a
+    // trip to Monitor.
     Loader {
         anchors.fill: parent
         sourceComponent: root.tab === "config" ? configPage
-                       : root.tab === "dev"    ? devPage
+                       : root.tab === "dev"    ? (root.subject === "qt" ? devQtPage : devPage)
                        : root.subject === ""   ? monitorPage
                        : subjectPage
     }
@@ -839,12 +847,24 @@ window was told about.</li></ul>"
     }
 
     Component {
+        id: devQtPage
+        DevQtPage {
+            panels: root.panelsFor("qt")
+            apiBase: dash.apiBase
+        }
+    }
+
+    Component {
         id: devPage
         DevPage {
             panels: root.panels
             actions: root.devActions()
             apiBase: dash.apiBase
             onRanAction: root.refresh()
+            // The page asks to go somewhere; this decides what that means.
+            // A page that set root.subject itself would be a second thing
+            // navigating, and the breadcrumb reads only this one.
+            onOpenQt: root.subject = "qt"
         }
     }
 }

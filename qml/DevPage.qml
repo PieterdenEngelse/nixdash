@@ -26,6 +26,10 @@ Item {
     // re-polls afterwards.
     signal ranAction()
 
+    /// Asked for when the Qt board's link is followed. The shell owns
+    /// navigation; this page only says where it would like to go.
+    signal openQt()
+
     /// Per-id run state for the board below: { running, ok, text, up }.
     ///
     /// `up` is only ever set from a probe of the port, never from the fact
@@ -603,6 +607,7 @@ rather than stale, so it is not a silent failure." }
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     title: "Qt — WebAssembly"
+                    onLinkActivated: function(id) { if (id === "dev-qt") root.openQt() }
                     rows: [
                         { label: "Browser UI built", value: root.val("qt-wasm", "built"),
                           source: "ui-wasm/build.sh, inside nix develop .#wasm" },
@@ -638,7 +643,15 @@ overriding Qt's check: the warning is load-bearing. <i>Qt for wasm</i> \
 above says which Qt this is, and both come from \
 <tt>~/Projects/qt6-wasm</tt>." },
                         { label: "Host Qt for codegen", value: root.val("qt-wasm", "host_env"),
-                          source: "QT_HOST_PATH - moc/rcc that run natively" }
+                          source: "QT_HOST_PATH - moc/rcc that run natively" },
+                        // The way into the Qt development page. This board
+                        // answers "is the bundle stale", which is a
+                        // freshness question and belongs here beside the
+                        // others; which qmake, which prefix and why there
+                        // are two Qts at once are a level down.
+                        { label: "the toolchain", value: "which qmake, which prefix",
+                          source: "both Qts, and what a build of yours actually uses",
+                          linkText: "Qt development", linkId: "dev-qt" }
                     ]
                 }
 
