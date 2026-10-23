@@ -30,8 +30,11 @@ before reuse. The conditional request still gets a 304 from the
 fixed port safe to keep.
 """
 
+import errno
 import http.server
 import os
+import re
+import subprocess
 import sys
 
 MODULE = "nixdash_ui_wasm_app.wasm"
@@ -185,6 +188,36 @@ class RevalidateHandler(http.server.SimpleHTTPRequestHandler):
         self._send_page_headers(body)
 
 
+def port_holder(port: int) -> str:
+    """`pid N (cmdline)` for whatever listens on `port`, or "" if unknown.
+
+    Best effort on purpose: this runs on the failure path, so it must never
+    be the reason nothing is reported. Anything unexpected - no `ss`, a
+    format change, the process gone between the two reads - degrades to the
+    message without a name rather than to a second traceback.
+    """
+    try:
+        out = subprocess.run(
+            ["ss", "-ltnp"], capture_output=True, text=True, timeout=3
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    for line in out.splitlines():
+        if f":{port} " not in line:
+            continue
+        match = re.search(r"pid=(\d+)", line)
+        if not match:
+            continue
+        pid = match.group(1)
+        try:
+            with open(f"/proc/{pid}/cmdline", "rb") as fh:
+                cmd = fh.read().replace(b"\0", b" ").decode(errors="replace").strip()
+        except OSError:
+            cmd = "?"
+        return f"pid {pid} ({cmd})"
+    return ""
+
+
 def main() -> int:
     args = [a for a in sys.argv[1:] if a != "--quiet"]
     RevalidateHandler.quiet_poller = "--quiet" in sys.argv[1:]
@@ -208,7 +241,30 @@ def main() -> int:
 
     # Threading, because the page fetches the glue and the module at once and
     # the module is 25M: a single-threaded server makes them queue.
-    server = http.server.ThreadingHTTPServer(("127.0.0.1", port), handler)
+    try:
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", port), handler)
+    except OSError as exc:
+        if exc.errno != errno.EADDRINUSE:
+            raise
+        # Say who, not just that. A held port is the one failure here with an
+        # obvious culprit, and a Python traceback names the socket module
+        # rather than the server already running - which is the thing you have
+        # to stop. Under systemd this is also all that reaches the journal,
+        # where sixty identical tracebacks say less than one line naming a pid.
+        who = port_holder(port)
+        print(
+            f"port {port} is already in use"
+            + (f" by {who}" if who else "")
+            + " - nothing was served.",
+            file=sys.stderr,
+            flush=True,
+        )
+        print(
+            "Stop that one, or serve on another port.",
+            file=sys.stderr,
+            flush=True,
+        )
+        return 1
     print(f"http://127.0.0.1:{port}/", flush=True)
     print("(the engine must also be running: cargo run -p nixdash-engine)", flush=True)
     try:

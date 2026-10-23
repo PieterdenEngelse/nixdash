@@ -310,6 +310,22 @@ in
       Unit = {
         Description = "nixdash browser UI server (loopback only)";
         After = [ "graphical-session-pre.target" ];
+
+        # Give up rather than retry for ever.
+        #
+        # `Restart = on-failure` with `RestartSec = 5s` never trips systemd's
+        # DEFAULT rate limit - five starts inside ten seconds - because five
+        # starts five seconds apart take twenty-five. So a held port produced
+        # a unit that retried silently and indefinitely: 58 restarts, state
+        # reported as `activating`, and :8099 answering the whole time from
+        # the process that held it. Everything looked fine and the unit had
+        # never once served a byte.
+        #
+        # Three failures in a minute is a real fault, so it stops and says
+        # `failed` - which `systemctl --user status` shows, and which is the
+        # honest reading of a server that cannot bind.
+        StartLimitIntervalSec = "60s";
+        StartLimitBurst = 3;
       };
 
       Service = {
