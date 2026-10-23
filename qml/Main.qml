@@ -193,6 +193,47 @@ ApplicationWindow {
     // ---- navigation ----------------------------------------------------
     // Two levels is the whole hierarchy: a top tab, and optionally one
     // subject drilled into. A router would be structure for its own sake.
+    /// The build stamp actually shown, and whether it is the real thing.
+    ///
+    /// Three sources, best first:
+    ///
+    ///   the bundle's Last-Modified   browser, asked of the server
+    ///   this binary's own mtime      desktop, read by Rust
+    ///   the build script's run       neither was available
+    ///
+    /// The last is what `build.rs` bakes in, and it is the START of a build:
+    /// a build script runs before anything is compiled. For the window that
+    /// is about two minutes early; for the browser bundle, six to eight. A
+    /// fresh build reading as stale is how this came up.
+    property string builtShown: dash.built
+    property bool builtIsExact: dash.builtExact
+
+    /// Ask the server when the bundle it is serving was written.
+    ///
+    /// Browser only - there is no server in the desktop build and nothing to
+    /// ask. HEAD rather than GET: the bundle is 25MB and the only thing
+    /// wanted is a header.
+    function refineBuiltFromBundle() {
+        if (!dash.browser)
+            return
+        var xhr = new XMLHttpRequest()
+        xhr.open("HEAD", "nixdash_ui_wasm_app.wasm")
+        xhr.onreadystatechange = function() {
+            if (xhr.readyState !== XMLHttpRequest.DONE)
+                return
+            var lm = xhr.status === 200
+                     ? xhr.getResponseHeader("Last-Modified") : ""
+            if (!lm)
+                return
+            var d = new Date(lm)
+            if (isNaN(d.getTime()))
+                return
+            root.builtShown = Qt.formatDateTime(d, "yyyy-MM-dd hh:mm")
+            root.builtIsExact = true
+        }
+        xhr.send()
+    }
+
     property string tab: "monitor"   // "monitor" | "config"
     property string subject: ""      // "" = overview; else nixos|qt|rust
 
@@ -248,7 +289,14 @@ ApplicationWindow {
         })
     }
 
-    Component.onCompleted: refresh()
+    Component.onCompleted: {
+        // One handler, not two: QML allows a property to be assigned once,
+        // and a second `Component.onCompleted` is "Property value set
+        // multiple times" - a BUILD error from the qml compiler, which the
+        // condensed build output then hid behind a successful-looking line.
+        refresh()
+        root.refineBuiltFromBundle()
+    }
     Timer { interval: 2000; running: true; repeat: true; onTriggered: root.refresh() }
 
     header: ToolBar {
@@ -610,22 +658,26 @@ everything here will look untouched." }
             InfoButton {
                 title: "About"
                 what: "Opens a panel naming this window's <b>version</b>, \
-when its <b>build started</b>, and the address it reads the app's background \
+when it was <b>built</b>, and the address it reads the app's background \
 service from."
                 why: "The build stamp is the only thing that tells two of \
 these windows apart - the version number is <tt>0.1.0</tt> in every build \
 ever made. It is how you check that the window in front of you contains a \
 change you just made, rather than being an older one left open behind it."
-                ifWrong: "<b>It is when the build started, not when it \
-finished.</b> The stamp is baked in by the build script, which runs before \
-anything is compiled - so a build that takes minutes reads minutes earlier \
-than the files it produced. The browser UI is where this shows: an emcc link \
-of eight minutes leaves a fresh bundle looking eight minutes stale.<br><br>\
-A stamp older than your last rebuild by more than that means this window is \
-a previous build still running: close it and start it again, because nothing \
-in a running window updates itself. The background service is a separate \
-program and can be a different build again, which the panel also names - \
-that is usually why a change seems not to have taken."
+                ifWrong: "<b>The label says which of two things it is.</b> \
+<i>built</i> means something observed the finished article: this window's \
+own file, or the bundle the server is handing out. <i>build started</i> \
+means neither was available and the only stamp left is the one the build \
+script wrote - and a build script runs BEFORE anything is compiled, so it \
+reads early by however long the build took.<br><br>\
+An installed copy is the usual <i>build started</i>: a store path's \
+timestamp is pinned to the epoch by design, so there is no finish time to \
+read.<br><br>\
+A stamp older than your last rebuild means this window is a previous build \
+still running: close it and start it again, because nothing in a running \
+window updates itself. The background service is a separate program and can \
+be a different build again, which the panel also names - that is usually why \
+a change seems not to have taken."
             }
 
             // Which build this window is - and ordinary selectable text now.
@@ -637,7 +689,7 @@ that is usually why a change seems not to have taken."
             SelectableText {
                 Layout.alignment: Qt.AlignVCenter
                 Layout.rightMargin: 2
-                text: "v" + dash.version + " \u00b7 " + dash.built
+                text: "v" + dash.version + " \u00b7 " + root.builtShown
                 font.pixelSize: root.chromeFont
             }
         }
@@ -707,9 +759,17 @@ engine reads the system, this window renders it."
                 // side an emcc link runs for minutes and the label read as
                 // a bundle that was already out of date the moment it
                 // landed - which is the misreading this wording removes.
-                SelectableText { text: "build started"; font.pixelSize: style.fontBody }
                 SelectableText {
-                    text: dash.built + "  (Amsterdam)"
+                    // The label is the claim, so it follows the measurement
+                    // rather than being written once and hoped for. "built"
+                    // only when something actually observed the finished
+                    // artefact; "build started" when the baked-in stamp is
+                    // all there is.
+                    text: root.builtIsExact ? "built" : "build started"
+                    font.pixelSize: style.fontBody
+                }
+                SelectableText {
+                    text: root.builtShown + "  (Amsterdam)"
                     font.pixelSize: style.fontBody
                 }
                 SelectableText { text: "engine";   font.pixelSize: style.fontBody }
@@ -730,11 +790,12 @@ engine reads the system, this window renders it."
                 textFormat: TextEdit.RichText
                 wrapMode: TextEdit.Wrap
                 font.pixelSize: style.fontBody
-                text: "<b>version</b> is the app's own version. \
-<b>build started</b> is when this window's build began, in Amsterdam time - \
-the start and not the finish, because the stamp is written before anything \
-is compiled. <b>engine</b> is the address this window reads from, marked \
-<i>unreachable</i> when nothing answers there."
+                text: "<b>version</b> is the app's own version. The \
+row beneath it is this window's build, in Amsterdam time, labelled \
+<b>built</b> when the finished article was measured and <b>build started</b> \
+when only the build script's own stamp was available. <b>engine</b> is the \
+address this window reads from, marked <i>unreachable</i> when nothing \
+answers there."
             }
 
             // Inline, not behind an info button. An About dialog that needs
@@ -752,10 +813,11 @@ to the epoch by design, and when a process started says when you opened the \
 window - not when its binary was made. So <b>build started</b> is the only \
 answer to \"is this the code I just wrote?\", which is the question that \
 costs an afternoon when two identical-looking windows are hours apart.<br><br>\
-<b>Compare it against when you started the build, not when it finished.</b> \
-A desktop build takes seconds and the difference never shows. The browser UI \
-links for minutes, so its stamp reads minutes behind the bundle it produced - \
-a fresh build looking stale is the expected reading there, not a fault.<br><br>\
+<b>When it reads <i>build started</i>, it is early by however long the \
+build took.</b> That is the baked-in stamp, written before compiling begins, \
+and it is all an installed copy has - a store path's timestamp is the epoch \
+by design. A local build reads <i>built</i> instead, from the file itself, \
+and the browser asks the server for its bundle's own timestamp.<br><br>\
 The background service shown as <b>engine</b> is a separate binary and can be \
 a different build entirely; its address is here so the two can be told apart \
 rather than assumed to match."

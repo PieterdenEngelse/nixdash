@@ -23,6 +23,7 @@
 /// shifted to 0000-03-01 so that February - and therefore the leap day -
 /// falls at the END of the year; that is what makes the month and day
 /// arithmetic plain division with no leap-year special case.
+#[allow(dead_code)]
 fn civil_from_days(days: i64) -> (i64, i64, i64) {
     let z = days + 719_468;
     let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
@@ -64,6 +65,7 @@ fn weekday(days: i64) -> i64 {
 ///
 /// If the EU ever does abolish the clock change, this is the one place to
 /// fix - and the symptom will be an About stamp an hour out in summer.
+#[allow(dead_code)]
 fn amsterdam_offset(secs: i64) -> i64 {
     let (y, _, _) = civil_from_days(secs.div_euclid(86_400));
     // Both March and October have 31 days, so the last Sunday is simply the
@@ -87,6 +89,7 @@ fn amsterdam_offset(secs: i64) -> i64 {
 ///
 /// Takes the instant rather than reading the clock, so that the string and
 /// the epoch emitted beside it describe the same moment.
+#[allow(dead_code)]
 fn build_stamp(utc: i64) -> String {
     let local = utc + amsterdam_offset(utc);
     let (y, m, d) = civil_from_days(local.div_euclid(86_400));
@@ -117,6 +120,7 @@ fn build_stamp(utc: i64) -> String {
 /// correct rather than a fault. The About panel says "build started" for
 /// this reason - if that label ever drifts back to "built", this is the
 /// paragraph explaining why it should not.
+#[allow(dead_code)]
 fn emit_build_date() {
     let utc = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
