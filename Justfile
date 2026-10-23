@@ -433,7 +433,15 @@ fresh:
     # The build is not this recipe's job - `just desktop` builds and launches,
     # and conflating the two is how you end up unsure whether what you are
     # looking at was just compiled.
-    echo "starting ./target/debug/nixdash-ui (built $(date -r ./target/debug/nixdash-ui +%H:%M))"
+    # "running", not "starting", and it says how to stop it.
+    #
+    # The next line execs, so this is the LAST thing this recipe will ever
+    # print - there is no "started" to follow it, and the app writes nothing
+    # to stdout in normal operation. "starting" promises a transition that
+    # never arrives, and a pane sitting on it reads as a hang: reported as
+    # "still starting .." on 2026-10-23, about a window that had been up and
+    # talking to the service for twelve minutes.
+    echo "running ./target/debug/nixdash-ui (built $(date -r ./target/debug/nixdash-ui +%H:%M)) - Ctrl-C closes it"
     exec ./target/debug/nixdash-ui
 
 # What of mine is running: the service, loops, server, engines, windows, launchers.
