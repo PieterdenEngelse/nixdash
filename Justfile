@@ -237,6 +237,34 @@ engine port="3199":
 # and minutes rather than seconds. Nothing else builds it: not `just desktop`, not
 # a deploy.
 
+# One qml/ edit, two programs, and nothing else builds the second.
+#
+# `cargo build` makes the window. Only ui-wasm/build.sh makes the browser
+# bundle - not a cargo build, not a switch - so a QML change reaches one of
+# them and silently leaves the other serving whatever it last compiled. That
+# asymmetry is the single thing this page exists to teach, and doing
+# something about it took two commands until now.
+#
+# Desktop first, deliberately: it is about two minutes against the browser's
+# six, so the window is ready to look at while the bundle is still linking.
+#
+# It builds and launches nothing. A window is yours to open - `just fresh`
+# after this - and the served tab reloads itself when the bundle lands.
+
+# Build both UIs from the shared qml/. About eight minutes.
+[group('window')]
+both:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "== the window (about 2 min)"
+    nix develop --command cargo build -p nixdash-ui
+    echo "== the browser bundle (about 6 min)"
+    nix develop .#wasm --command bash ui-wasm/build.sh
+    # Single quotes: backticks inside double quotes are command
+    # substitution, so the obvious way to write this would have RUN
+    # `just fresh` and opened a window as a side effect of an echo.
+    echo '== both built - `just fresh` opens the window; the tab reloads itself'
+
 # Rebuild the browser UI.
 [group('browser')]
 browser:

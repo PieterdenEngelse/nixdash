@@ -104,6 +104,24 @@ pub fn all() -> Vec<Build> {
         // run - the same split `rebuild-wasm-ui` makes for `serve.sh`, and for
         // the same reason: a launch would hold this request until the window
         // was closed, and a window is the user's to open.
+        // Both UIs, in one press. `just both`, not the two command lines:
+        // the recipe is the one definition of what "both" means, and a copy
+        // here would be a second one to keep in step.
+        Build {
+            id: "both-uis",
+            label: "both UIs",
+            execution: Execution::Wait(RunCommand {
+                program: "nix".into(),
+                args: vec![
+                    "develop".into(),
+                    "--command".into(),
+                    "just".into(),
+                    "both".into(),
+                ],
+                elevate: false,
+                cwd: Some(dir.clone()),
+            }),
+        },
         Build {
             id: "desktop-ui",
             label: "this window",

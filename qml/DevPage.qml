@@ -857,7 +857,28 @@ step: <tt>just serve</tt> puts the built bundle on :8099, and \
     working, not a fault. If you would rather not have builds competing for \
     memory while you work, stop the loop, make the edits, and start it again for \
     one build at the end." }
-                          ] }
+                          ] },
+                        // The row that exists because the lesson above has a
+                        // cost: knowing the browser is a second program does
+                        // not help if acting on it means remembering a second
+                        // command. This is both, in one press.
+                        { label: "both UIs", value: "just both",
+                          source: "one qml/ edit, both programs - about 8 minutes",
+                          buildId: "both-uis", runLabel: "Build",
+                          what: "Builds the window and the browser bundle \
+from the same <tt>qml/</tt>, one after the other. Desktop first, since it is \
+about two minutes against the browser's six.",
+                          why: "<b>Nothing else builds both.</b> A cargo \
+build makes the window; only <tt>ui-wasm/build.sh</tt> makes the bundle. So \
+a QML edit reaches one program and leaves the other serving whatever it last \
+compiled - which looks identical to working, and is the asymmetry this whole \
+page exists to teach.",
+                          ifWrong: "<b>It launches nothing.</b> A window is \
+yours to open - the Desktop tile's <i>fresh window</i> does that - and the \
+served tab reloads itself once the bundle lands.<br><br>\
+Eight minutes is most of the cost of a switch, so it is not the way to see a \
+one-line change in the window alone. Use it when the edit has to reach both, \
+which is any change to a shared component." }
                     ]
                 }
 
