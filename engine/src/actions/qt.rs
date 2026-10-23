@@ -3,7 +3,7 @@ use anyhow::Result;
 use super::{Action, ActionInfo, ActionKind, ActionProvider, Urgency};
 use crate::{
     collector::{Collector, Subject},
-    collectors::qt::QtCollector,
+    collectors::qt::{QtCollector, UI_CLOSURE},
 };
 
 /// A Nix snippet for a Qt prefix that cxx-qt can actually use.
@@ -11,6 +11,20 @@ use crate::{
 /// Offered only when a qmake exists but its prefix is missing host tools -
 /// the state that builds happily until code generation. "No Qt here" is not
 /// a problem to fix, so it produces no action.
+///
+/// Neither is "the Qt this app runs against". That prefix is a RUNTIME
+/// closure: qmltyperegistrar and qmlcachegen are absent from it by design,
+/// because nothing needs them to draw a window. Reporting that as a build
+/// about to fail is a false alarm, and this one ran for weeks on a machine
+/// whose flake had carried the merged prefix the snippet advises since the
+/// day it was written - the action told the user to apply a fix already in
+/// their own flake.nix.
+///
+/// The collector beside this already draws the distinction and refuses to
+/// call a closure-sourced qmake Ok. An action has to go further than a
+/// reading: it must also not claim what WOULD happen in an environment it
+/// never looked at. The one a build uses is the dev shell's QMAKE, which
+/// this app cannot see - it is not on the background service's PATH.
 pub struct QtPrefix;
 
 const MERGED_PREFIX_SNIPPET: &str = r#"# One merged Qt prefix, in your flake's devShell.
@@ -49,6 +63,14 @@ impl ActionProvider for QtPrefix {
             return Ok(Vec::new());
         };
         if v["prefix_complete"].as_bool().unwrap_or(false) {
+            return Ok(Vec::new());
+        }
+
+        // Found in our own closure says nothing about a build. See the note
+        // on the struct: host tools are absent from a runtime prefix on
+        // purpose, so an incomplete one here is the expected reading rather
+        // than a fault.
+        if v["source"].as_str() == Some(UI_CLOSURE) {
             return Ok(Vec::new());
         }
 
@@ -95,6 +117,21 @@ impl ActionProvider for QtPrefix {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn silent_when_the_qmake_is_our_own_closure() {
+        // The prefix the app runs against is missing host tools by design,
+        // and no build uses it. Claiming "a cxx-qt build will fail" from it
+        // is the false alarm this guard exists to stop - on the machine that
+        // found it, every build was succeeding while this action was shown.
+        let v = QtCollector.sample().unwrap();
+        if v["source"].as_str() == Some(UI_CLOSURE) {
+            assert!(
+                QtPrefix.actions().unwrap().is_empty(),
+                "offered a build-will-fail action for a RUNTIME prefix: {v:?}"
+            );
+        }
+    }
 
     #[test]
     fn silent_when_no_qt_present() {

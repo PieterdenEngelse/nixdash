@@ -150,7 +150,16 @@ struct WasmReading {
     emcc_recommended: Option<String>,
 }
 
-const WASM_APP: &str = "ui-wasm/build/nixdash_ui_wasm_app.wasm";
+/// The bundle that is actually SERVED, not the one being linked.
+///
+/// `ui-wasm/build` holds a mixture of two builds during a link, and keeps
+/// the newer mtime even when the link then fails - `build.sh` flips the
+/// `current` symlink only on success. Measuring `build` therefore reports
+/// "up to date" the moment a build starts and keeps reporting it after one
+/// fails, while the tab goes on serving the old bundle. Measured here on
+/// 2026-10-23: build/ 09:34, current/ 07:36, newest qml 08:50 - the reading
+/// said fresh and the served bundle was two hours behind.
+const WASM_APP: &str = "ui-wasm/current/nixdash_ui_wasm_app.wasm";
 
 impl Collector for QtWasmCollector {
     fn meta(&self) -> PanelMeta {

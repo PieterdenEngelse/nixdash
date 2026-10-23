@@ -54,7 +54,12 @@ impl ActionProvider for WasmStale {
         let Some(dir) = project_dir() else {
             return Ok(Vec::new());
         };
-        let wasm = dir.join("ui-wasm/build/nixdash_ui_wasm_app.wasm");
+        // `current`, not `build`: build.sh flips that symlink only on a
+        // successful link, so a FAILED build leaves build/ newer than qml/
+        // and silences this action for ever while the stale bundle is still
+        // what gets served. The symlink is followed, so this is the mtime of
+        // the release it points at.
+        let wasm = dir.join("ui-wasm/current/nixdash_ui_wasm_app.wasm");
         let Some(built_at) = mtime(&wasm) else {
             // Never built is not drift. Building it for the first time is a
             // decision about whether you want a browser UI at all, not

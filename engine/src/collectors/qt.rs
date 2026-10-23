@@ -113,7 +113,7 @@ fn qmake_in_ui_closure() -> Option<(&'static str, PathBuf)> {
 
 /// Source label for the closure fallback. A constant because the headline
 /// has to recognise it, and a typo would silently change the claim.
-const UI_CLOSURE: &str = "the Qt this app runs against";
+pub(crate) const UI_CLOSURE: &str = "the Qt this app runs against";
 
 impl Collector for QtCollector {
     fn meta(&self) -> PanelMeta {
