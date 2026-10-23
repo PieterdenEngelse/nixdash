@@ -246,6 +246,18 @@ ApplicationWindow {
     property string tab: "monitor"   // "monitor" | "config"
     property string subject: ""      // "" = overview; else nixos|qt|rust
 
+    /// A third level, under a subject. Only Dev > Qt has any.
+    ///
+    /// The note above used to say two levels were the whole hierarchy and a
+    /// router would be structure for its own sake. That held while every
+    /// subject was a set of panels. Dev > Qt is a teaching path now - "why
+    /// there is no single Qt" is a page, not a panel - and flattening those
+    /// into siblings of Qt would have the trail say you are somewhere you
+    /// are not.
+    ///
+    /// Cleared whenever the level above it changes.
+    property string topic: ""
+
     // Display names for the breadcrumb. MonitorPage and SubjectPage each
     // carry their own copy for their own labels; this is the third and the
     // one the header reads.
@@ -318,6 +330,42 @@ ApplicationWindow {
         { "id": "", "name": "Overview" },
         { "id": "qt", "name": "Qt" }
     ]
+
+    /// The topics under Dev > Qt. Each is a page of its own.
+    readonly property var qtTopics: [
+        { "id": "", "name": "Overview" },
+        { "id": "prefix", "name": "Why there is no single Qt" }
+    ]
+
+    /// A topic's display name, for the trail.
+    function topicName(id) {
+        var m = root.qtTopics.filter(function(t) { return t.id === id })
+        return m.length > 0 ? m[0].name : id
+    }
+
+    /// The children of the page you are ON - which is what the strip offers.
+    ///
+    /// Not "the subpages of the tab": standing on Dev > Qt, the useful list
+    /// is Qt's topics. One strip that always shows where you can go from
+    /// here beats two, one of which is usually stale.
+    function childrenHere() {
+        if (root.tab !== "dev")
+            return []
+        return root.subject === "qt" ? root.qtTopics : root.devSubpages
+    }
+
+    function childHere() {
+        return root.subject === "qt" ? root.topic : root.subject
+    }
+
+    function goChild(id) {
+        if (root.subject === "qt")
+            root.topic = id
+        else {
+            root.subject = id
+            root.topic = ""
+        }
+    }
 
     function subpagesFor(t) {
         return t === "dev" ? root.devSubpages : []
@@ -457,17 +505,17 @@ ApplicationWindow {
                     TabButton {
                         text: "Monitor"; width: Math.max(90, implicitWidth)
                         font.pixelSize: root.chromeFont
-                        onClicked: { root.tab = "monitor"; root.subject = "" }
+                        onClicked: { root.tab = "monitor"; root.subject = ""; root.topic = "" }
                     }
                     TabButton {
                         text: "Config"; width: Math.max(90, implicitWidth)
                         font.pixelSize: root.chromeFont
-                        onClicked: { root.tab = "config"; root.subject = "" }
+                        onClicked: { root.tab = "config"; root.subject = ""; root.topic = "" }
                     }
                     TabButton {
                         text: "Dev"; width: Math.max(90, implicitWidth)
                         font.pixelSize: root.chromeFont
-                        onClicked: { root.tab = "dev"; root.subject = "" }
+                        onClicked: { root.tab = "dev"; root.subject = ""; root.topic = "" }
                     }
                 }
                 // Why there are two pages at all, and why one of them refuses to
@@ -684,7 +732,7 @@ ApplicationWindow {
         ToolBar {
             width: parent.width
             implicitHeight: 30
-            visible: root.subpagesFor(root.tab).length > 0
+            visible: root.childrenHere().length > 0
 
             RowLayout {
                 anchors.fill: parent
@@ -692,7 +740,7 @@ ApplicationWindow {
                 spacing: 4
 
                 Repeater {
-                    model: root.subpagesFor(root.tab)
+                    model: root.childrenHere()
 
                     // Not a TabBar: these are not siblings of the tabs above
                     // and must not look like them. A plain label that bolds
@@ -702,7 +750,7 @@ ApplicationWindow {
                         Layout.preferredHeight: 24
                         Layout.preferredWidth: subLabel.implicitWidth + 18
                         radius: 4
-                        color: root.subject === modelData.id
+                        color: root.childHere() === modelData.id
                                ? palette.mid : "transparent"
 
                         SelectableText {
@@ -710,14 +758,14 @@ ApplicationWindow {
                             anchors.centerIn: parent
                             text: modelData.name
                             font.pixelSize: root.chromeFont
-                            font.bold: root.subject === modelData.id
+                            font.bold: root.childHere() === modelData.id
                         }
 
                         MouseArea {
                             anchors.fill: parent
-                            enabled: root.subject !== modelData.id
+                            enabled: root.childHere() !== modelData.id
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: root.subject = modelData.id
+                            onClicked: root.goChild(modelData.id)
                         }
                     }
                 }
@@ -778,7 +826,7 @@ a trip to Monitor and back."
                                 anchors.fill: parent
                                 enabled: root.subject !== ""
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: root.subject = ""
+                                onClicked: { root.subject = ""; root.topic = "" }
                             }
                         }
 
@@ -791,6 +839,30 @@ a trip to Monitor and back."
                         SelectableText {
                             text: root.subjectNames[root.subject] || root.subject
                             visible: root.subject !== ""
+                            font.pixelSize: style.fontBody
+                            // Bold only when it is where you are. With a
+                            // topic open this is a parent, and a parent that
+                            // looked like the destination would make the
+                            // trail name two places at once.
+                            font.bold: root.topic === ""
+
+                            MouseArea {
+                                anchors.fill: parent
+                                enabled: root.topic !== ""
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.topic = ""
+                            }
+                        }
+
+                        Label {
+                            text: "\u203a"
+                            visible: root.topic !== ""
+                            font.pixelSize: style.fontBody
+                        }
+
+                        SelectableText {
+                            text: root.topicName(root.topic)
+                            visible: root.topic !== ""
                             font.pixelSize: style.fontBody
                             font.bold: true
                         }
@@ -991,7 +1063,7 @@ window was told about.</li></ul>"
     Loader {
         anchors.fill: parent
         sourceComponent: root.tab === "config" ? configPage
-                       : root.tab === "dev"    ? (root.subject === "qt" ? devQtPage : devPage)
+                       : root.tab === "dev"    ? root.devComponent()
                        : root.subject === ""   ? monitorPage
                        : subjectPage
     }
@@ -1028,6 +1100,27 @@ window was told about.</li></ul>"
             actions: root.machineActions()
             apiBase: dash.apiBase
             onRanAction: root.refresh()
+        }
+    }
+
+    /// Which page the Dev tab shows, at whichever depth.
+    ///
+    /// A function rather than a third nested conditional in the Loader: the
+    /// next topic adds a line here instead of another level of brackets to
+    /// read past.
+    function devComponent() {
+        if (root.subject !== "qt")
+            return devPage
+        if (root.topic === "prefix")
+            return qtPrefixPage
+        return devQtPage
+    }
+
+    Component {
+        id: qtPrefixPage
+        QtPrefixPage {
+            panels: root.panelsFor("qt")
+            apiBase: dash.apiBase
         }
     }
 
