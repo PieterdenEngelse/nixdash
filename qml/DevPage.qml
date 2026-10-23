@@ -609,6 +609,16 @@ rather than stale, so it is not a silent failure." }
                     title: "Qt — WebAssembly"
                     onLinkActivated: function(id) { if (id === "dev-qt") root.openQt() }
                     rows: [
+                        // First, not last. As the last row it sat around
+                        // 850px down a 1920-wide page - at or below the fold
+                        // in a browser window, and reported as the page not
+                        // existing. A signpost you have to scroll to is not
+                        // one. The readings below are what you come back
+                        // for; this is the way in, and it only has to be
+                        // seen once.
+                        { label: "the toolchain", value: "which qmake, which prefix",
+                          source: "both Qts, and what a build of yours actually uses",
+                          linkText: "Qt development", linkId: "dev-qt" },
                         { label: "Browser UI built", value: root.val("qt-wasm", "built"),
                           source: "ui-wasm/build.sh, inside nix develop .#wasm" },
                         { label: "Up to date with qml/", value: root.val("qt-wasm", "stale") === "yes"
@@ -643,15 +653,7 @@ overriding Qt's check: the warning is load-bearing. <i>Qt for wasm</i> \
 above says which Qt this is, and both come from \
 <tt>~/Projects/qt6-wasm</tt>." },
                         { label: "Host Qt for codegen", value: root.val("qt-wasm", "host_env"),
-                          source: "QT_HOST_PATH - moc/rcc that run natively" },
-                        // The way into the Qt development page. This board
-                        // answers "is the bundle stale", which is a
-                        // freshness question and belongs here beside the
-                        // others; which qmake, which prefix and why there
-                        // are two Qts at once are a level down.
-                        { label: "the toolchain", value: "which qmake, which prefix",
-                          source: "both Qts, and what a build of yours actually uses",
-                          linkText: "Qt development", linkId: "dev-qt" }
+                          source: "QT_HOST_PATH - moc/rcc that run natively" }
                     ]
                 }
 

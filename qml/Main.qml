@@ -307,398 +307,513 @@ ApplicationWindow {
     }
     Timer { interval: 2000; running: true; repeat: true; onTriggered: root.refresh() }
 
-    header: ToolBar {
-        RowLayout {
-            anchors.fill: parent
-            anchors.leftMargin: 10
-            anchors.rightMargin: 10
-            spacing: 6
+    /// The subpages of a tab, as { id, name }. `id` is what `subject`
+    /// becomes; "" is the tab's own page.
+    ///
+    /// Only Dev has any. Monitor's three subjects are reached from cards on
+    /// its overview, which is a different gesture for a different thing -
+    /// those are readings you pick between, and this is one page that sits
+    /// under another.
+    readonly property var devSubpages: [
+        { "id": "", "name": "Overview" },
+        { "id": "qt", "name": "Qt" }
+    ]
 
-            // Both header Buttons carry the size explicitly for the reason
-            // Style.fontChrome documents: a Control with no font of its own
-            // takes the platform's, and the browser build has no platform to
-            // take it from - this one rendered at 10px on the desktop and
-            // 16px in the tab.
-            Button {
-                text: "‹"
-                visible: root.subject !== ""
-                flat: true
-                font.pixelSize: root.chromeFont
-                onClicked: root.subject = ""
-            }
+    function subpagesFor(t) {
+        return t === "dev" ? root.devSubpages : []
+    }
 
-            SelectableText {
-                text: "nixdash"
-                font.bold: true
-                font.pixelSize: 15
-            }
+    header: Column {
+    ToolBar {
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 10
+                anchors.rightMargin: 10
+                spacing: 6
 
-            // The window's own behaviour, including the two keyboard
-            // shortcuts. A shortcut with no visible control is undiscoverable
-            // by definition, so this is the affordance F11 would otherwise
-            // not have.
-            InfoButton {
-                title: "This window"
-                what: "Opens maximised, filling the screen below your panel. \
-<b>F11</b> switches to true fullscreen - no title bar, covering the panel - \
-and F11 or <b>Escape</b> comes back. Closing the window does not stop \
-monitoring.<br><br>\
-Every value in this window is <b>selectable</b>, and selecting <b>copies</b>: \
-letting go of a drag puts that text on the clipboard, so <tt>Ctrl+V</tt> \
-pastes it anywhere. <tt>Ctrl+C</tt> copies the selection again if you would \
-rather use the keystroke. A click selects nothing and deliberately leaves the \
-clipboard alone, so reading a value by tapping it cannot cost you what you \
-had copied. On this desktop a <i>dragged</i> value also lands on the X11 \
-primary selection, so a <b>middle-click</b> pastes it without either.<br><br>\
-<tt>Ctrl+A</tt> selects the whole of the value you last clicked, ready for \
-<tt>Ctrl+C</tt>; unlike dragging, it does not copy on its own.<br><br>\
-A selection cannot cross from one value into the next, so for a whole panel \
-at once, point at it and press <b>Ctrl+Shift+C</b> - that copies the pane \
-under the pointer as tab-separated text."
-                why: "The engine is a separate background service that keeps \
-sampling whether or not a window is open, so closing this loses nothing but \
-the view. Maximised rather than fullscreen by default because fullscreen \
-hides the title bar, leaving no visible way to close or move the window - a \
-poor default for something you open to glance at."
-                ifWrong: "<ul>\
-<li><b>Something you copied here vanished.</b> On this desktop the clipboard \
-is held by the program that filled it, and nothing is running to outlive it - \
-no clipboard manager. Closing this window therefore empties whatever you \
-copied from it, with no error anywhere. Paste it before you close the window; \
-the primary selection goes the same way for the same reason.</li>\
-<li><b>Ctrl+Shift+C did nothing.</b> The pointer was not over a panel. It \
-copies the pane you are pointing at, so there is no ambiguity about which \
-one you meant.</li>\
-<li><b>Ctrl+A or Ctrl+C did nothing.</b> Both act on the value you last \
-clicked, and in a window you have only just opened that is nothing at all. \
-Click a value first - a single click selects nothing and copies nothing, it \
-only decides what the keys apply to.</li>\
-<li><b>A dragged selection stops at the end of a value.</b> Expected. Each \
-reading is its own piece of text - which is what lets each one carry its own \
-info button - and Qt shares a selection only inside one piece. Ctrl+Shift+C \
-is the gesture for more than one.</li>\
-<li><b>Middle-click pastes something older.</b> The primary selection holds \
-whatever was selected <i>last</i>, anywhere on the desktop - selecting in \
-another window replaces it. In the browser build there is no primary \
-selection at all, so there use Ctrl+C or Ctrl+Shift+C.</li>\
-<li><b>F11 does something unexpected.</b> On this machine the key marked \
-PrtScrn reports itself as F11, so pressing it here toggles fullscreen rather \
-than taking a screenshot.</li>\
-<li><b>The window seems stuck covering everything.</b> Press Escape.</li>\
-<li><b>It opens small.</b> You are running an older build - see Refresh \
-&rarr; Deploying.</li></ul>"
-                sections: [
-                    { title: "The two windows", body: "\
-This is the <b>desktop</b> build: Rust and Qt/QML compiled natively, talking \
-to the engine over loopback HTTP.<br><br>\
-There is a second one. The same QML is compiled to \
-<a href='https://webassembly.org/'>WebAssembly</a> and runs in a browser, \
-served from another loopback port. Both read the same engine, so they always \
-agree - and they are built from one <tt>qml/</tt> directory, symlinked into \
-each crate rather than copied, so an edit reaches both.<br><br>\
-They differ only in how they are built: the desktop one is pure Cargo, the \
-browser one needs CMake, corrosion, and a Qt cross-compiled for Emscripten. \
-That second toolchain is the reason the Qt and Rust panels exist at all - \
-every trap in getting it working is a value one of them now reports.<br><br>\
-See <a href='https://doc.qt.io/qt-6/'>the Qt 6 documentation</a>." },
-                    { title: "Privacy", body: "\
-<ul>\
-<li><b>Loopback only.</b> The engine binds <tt>127.0.0.1</tt> \
-unconditionally - it is not a setting. It has no authentication and no TLS, \
-so it must never be reachable from anywhere else.</li>\
-<li><b>No accounts, no telemetry, no network calls.</b> Every panel reads \
-local state: <tt>/proc</tt>, <tt>systemctl</tt>, \
-<tt>/nix/var/nix/profiles</tt>, <tt>statvfs</tt>, <tt>qmake</tt>, \
-<tt>rustc</tt>. Nothing is sent anywhere and the engine fetches \
-nothing.</li>\
-<li><b>No stored data.</b> History lives in memory and is lost on \
-restart.</li>\
-<li><b>No privilege of its own.</b> It runs as you and reads only what you \
-could already read. It can start a privileged action, but only through a \
-polkit prompt you answer.</li>\
-</ul>\
-Links in these panels are the one exception: following one opens your \
-browser and contacts that site, like any other link." }
-                ]
-            }
-
-            TabBar {
-                id: tabs
-                Layout.leftMargin: 10
-                currentIndex: root.tab === "monitor" ? 0
-                            : root.tab === "config"  ? 1 : 2
-                // onClicked per button, not onCurrentIndexChanged: clicking
-                // the tab you are already on must still return to its root,
-                // and an index that does not change fires no signal.
-                //
-                // 90 is the width the three have always had, and equal
-                // widths are the point of it - but as a floor now rather than
-                // a ceiling. Pinned, a tab clipped its own label the moment
-                // the text outgrew it: at the browser's 22px header "Monitor"
-                // rendered as "Moni...", in the one place that names what the
-                // tab does.
-                TabButton {
-                    text: "Monitor"; width: Math.max(90, implicitWidth)
+                // Both header Buttons carry the size explicitly for the reason
+                // Style.fontChrome documents: a Control with no font of its own
+                // takes the platform's, and the browser build has no platform to
+                // take it from - this one rendered at 10px on the desktop and
+                // 16px in the tab.
+                Button {
+                    text: "‹"
+                    visible: root.subject !== ""
+                    flat: true
                     font.pixelSize: root.chromeFont
-                    onClicked: { root.tab = "monitor"; root.subject = "" }
+                    onClicked: root.subject = ""
                 }
-                TabButton {
-                    text: "Config"; width: Math.max(90, implicitWidth)
-                    font.pixelSize: root.chromeFont
-                    onClicked: { root.tab = "config"; root.subject = "" }
-                }
-                TabButton {
-                    text: "Dev"; width: Math.max(90, implicitWidth)
-                    font.pixelSize: root.chromeFont
-                    onClicked: { root.tab = "dev"; root.subject = "" }
-                }
-            }
-            // Why there are two pages at all, and why one of them refuses to
-            // let you type into it - which is the thing people expect and do
-            // not get.
-            InfoButton {
-                title: "Monitor and Config"
-                what: "Two questions asked at different times.<br><br>\
-<b>Monitor</b> answers <i>is anything wrong right now</i> - one card per \
-subject, each showing its unhappiest panel.<br>\
-<b>Config</b> answers <i>how is this set up, and what would I change</i> - \
-what is in effect, and which file declares it."
-                why: "A single grid gives every panel equal weight, so \
-<i>Qt prefix complete</i> and <i>disk at 95%</i> look identical until you \
-read both. Monitor exists so that most of the time you can read nothing and \
-move on."
-                ifWrong: "<b>Config is deliberately not a settings form.</b> \
-This machine is configured declaratively, so a field you could type into \
-would either write somewhere Nix later overwrites, or fight Nix outright - \
-either way lying about where configuration lives. It shows values, says which \
-file they come from, and hands you a snippet."
-                sections: [
-                    { title: "The three subjects", body: "\
-Monitoring is split by subject because the questions are genuinely \
-different.<br><br>\
-<b>NixOS</b> - is this machine healthy? Memory and stall pressure, failed \
-units in both scopes, generations and whether a reboot is pending, free space \
-on the store's filesystem. Most of the actions live here, and they are the \
-ones that can be run.<br><br>\
-<b>Qt</b> and <b>Rust</b> - <i>will a build work in this environment?</i> \
-Not <i>is it installed</i>. That distinction is the whole point: a Qt prefix \
-can be present, correct and still missing the host tools <tt>cxx-qt</tt> \
-needs, because on NixOS <tt>qmltyperegistrar</tt> and <tt>qmlcachegen</tt> \
-live in qtdeclarative rather than qtbase - and the build fails late, naming \
-the tool rather than the prefix.<br><br>\
-Both describe the <b>engine's</b> environment, which is the background \
-service's - not whichever shell you are sitting in. A devShell with a \
-complete prefix will not change what those panels say. That is a real \
-limitation, stated plainly rather than papered over.<br><br>\
-References: <a href='https://nixos.org/manual/nixos/stable/'>NixOS \
-manual</a> &middot; <a href='https://doc.qt.io/qt-6/'>Qt 6</a> &middot; \
-<a href='https://doc.rust-lang.org/rustc/platform-support.html'>Rust \
-platform support</a>" }
-                ]
-            }
-
-            // Where you are, as a trail. The tab bar says which of the two
-            // pages you are on, but a subject's panels are a level below it
-            // and the only thing naming them was the page's own heading -
-            // which scrolls away. The first crumb is also the way back up.
-            Row {
-                id: crumbs
-                spacing: 5
-                Layout.leftMargin: 4
-                Layout.alignment: Qt.AlignVCenter
 
                 SelectableText {
-                    text: root.tab === "monitor" ? "Monitor"
-                        : root.tab === "config"  ? "Config" : "Dev"
-                    font.pixelSize: style.fontBody
-                    // Not dimmed when it is a parent rather than the place
-                    // you are - see Style.qml. What is left to say so is the
-                    // ordinary breadcrumb cue: the last crumb is where you
-                    // are, and only the ones before it answer a click.
+                    text: "nixdash"
+                    font.bold: true
+                    font.pixelSize: 15
+                }
 
-                    // No cursor change and no click on the overview, where
-                    // this crumb leads nowhere. A pointing hand over a label
-                    // that does nothing is a promise the click does not keep.
+                // The window's own behaviour, including the two keyboard
+                // shortcuts. A shortcut with no visible control is undiscoverable
+                // by definition, so this is the affordance F11 would otherwise
+                // not have.
+                InfoButton {
+                    title: "This window"
+                    what: "Opens maximised, filling the screen below your panel. \
+    <b>F11</b> switches to true fullscreen - no title bar, covering the panel - \
+    and F11 or <b>Escape</b> comes back. Closing the window does not stop \
+    monitoring.<br><br>\
+    Every value in this window is <b>selectable</b>, and selecting <b>copies</b>: \
+    letting go of a drag puts that text on the clipboard, so <tt>Ctrl+V</tt> \
+    pastes it anywhere. <tt>Ctrl+C</tt> copies the selection again if you would \
+    rather use the keystroke. A click selects nothing and deliberately leaves the \
+    clipboard alone, so reading a value by tapping it cannot cost you what you \
+    had copied. On this desktop a <i>dragged</i> value also lands on the X11 \
+    primary selection, so a <b>middle-click</b> pastes it without either.<br><br>\
+    <tt>Ctrl+A</tt> selects the whole of the value you last clicked, ready for \
+    <tt>Ctrl+C</tt>; unlike dragging, it does not copy on its own.<br><br>\
+    A selection cannot cross from one value into the next, so for a whole panel \
+    at once, point at it and press <b>Ctrl+Shift+C</b> - that copies the pane \
+    under the pointer as tab-separated text."
+                    why: "The engine is a separate background service that keeps \
+    sampling whether or not a window is open, so closing this loses nothing but \
+    the view. Maximised rather than fullscreen by default because fullscreen \
+    hides the title bar, leaving no visible way to close or move the window - a \
+    poor default for something you open to glance at."
+                    ifWrong: "<ul>\
+    <li><b>Something you copied here vanished.</b> On this desktop the clipboard \
+    is held by the program that filled it, and nothing is running to outlive it - \
+    no clipboard manager. Closing this window therefore empties whatever you \
+    copied from it, with no error anywhere. Paste it before you close the window; \
+    the primary selection goes the same way for the same reason.</li>\
+    <li><b>Ctrl+Shift+C did nothing.</b> The pointer was not over a panel. It \
+    copies the pane you are pointing at, so there is no ambiguity about which \
+    one you meant.</li>\
+    <li><b>Ctrl+A or Ctrl+C did nothing.</b> Both act on the value you last \
+    clicked, and in a window you have only just opened that is nothing at all. \
+    Click a value first - a single click selects nothing and copies nothing, it \
+    only decides what the keys apply to.</li>\
+    <li><b>A dragged selection stops at the end of a value.</b> Expected. Each \
+    reading is its own piece of text - which is what lets each one carry its own \
+    info button - and Qt shares a selection only inside one piece. Ctrl+Shift+C \
+    is the gesture for more than one.</li>\
+    <li><b>Middle-click pastes something older.</b> The primary selection holds \
+    whatever was selected <i>last</i>, anywhere on the desktop - selecting in \
+    another window replaces it. In the browser build there is no primary \
+    selection at all, so there use Ctrl+C or Ctrl+Shift+C.</li>\
+    <li><b>F11 does something unexpected.</b> On this machine the key marked \
+    PrtScrn reports itself as F11, so pressing it here toggles fullscreen rather \
+    than taking a screenshot.</li>\
+    <li><b>The window seems stuck covering everything.</b> Press Escape.</li>\
+    <li><b>It opens small.</b> You are running an older build - see Refresh \
+    &rarr; Deploying.</li></ul>"
+                    sections: [
+                        { title: "The two windows", body: "\
+    This is the <b>desktop</b> build: Rust and Qt/QML compiled natively, talking \
+    to the engine over loopback HTTP.<br><br>\
+    There is a second one. The same QML is compiled to \
+    <a href='https://webassembly.org/'>WebAssembly</a> and runs in a browser, \
+    served from another loopback port. Both read the same engine, so they always \
+    agree - and they are built from one <tt>qml/</tt> directory, symlinked into \
+    each crate rather than copied, so an edit reaches both.<br><br>\
+    They differ only in how they are built: the desktop one is pure Cargo, the \
+    browser one needs CMake, corrosion, and a Qt cross-compiled for Emscripten. \
+    That second toolchain is the reason the Qt and Rust panels exist at all - \
+    every trap in getting it working is a value one of them now reports.<br><br>\
+    See <a href='https://doc.qt.io/qt-6/'>the Qt 6 documentation</a>." },
+                        { title: "Privacy", body: "\
+    <ul>\
+    <li><b>Loopback only.</b> The engine binds <tt>127.0.0.1</tt> \
+    unconditionally - it is not a setting. It has no authentication and no TLS, \
+    so it must never be reachable from anywhere else.</li>\
+    <li><b>No accounts, no telemetry, no network calls.</b> Every panel reads \
+    local state: <tt>/proc</tt>, <tt>systemctl</tt>, \
+    <tt>/nix/var/nix/profiles</tt>, <tt>statvfs</tt>, <tt>qmake</tt>, \
+    <tt>rustc</tt>. Nothing is sent anywhere and the engine fetches \
+    nothing.</li>\
+    <li><b>No stored data.</b> History lives in memory and is lost on \
+    restart.</li>\
+    <li><b>No privilege of its own.</b> It runs as you and reads only what you \
+    could already read. It can start a privileged action, but only through a \
+    polkit prompt you answer.</li>\
+    </ul>\
+    Links in these panels are the one exception: following one opens your \
+    browser and contacts that site, like any other link." }
+                    ]
+                }
+
+                TabBar {
+                    id: tabs
+                    Layout.leftMargin: 10
+                    currentIndex: root.tab === "monitor" ? 0
+                                : root.tab === "config"  ? 1 : 2
+                    // onClicked per button, not onCurrentIndexChanged: clicking
+                    // the tab you are already on must still return to its root,
+                    // and an index that does not change fires no signal.
+                    //
+                    // 90 is the width the three have always had, and equal
+                    // widths are the point of it - but as a floor now rather than
+                    // a ceiling. Pinned, a tab clipped its own label the moment
+                    // the text outgrew it: at the browser's 22px header "Monitor"
+                    // rendered as "Moni...", in the one place that names what the
+                    // tab does.
+                    TabButton {
+                        text: "Monitor"; width: Math.max(90, implicitWidth)
+                        font.pixelSize: root.chromeFont
+                        onClicked: { root.tab = "monitor"; root.subject = "" }
+                    }
+                    TabButton {
+                        text: "Config"; width: Math.max(90, implicitWidth)
+                        font.pixelSize: root.chromeFont
+                        onClicked: { root.tab = "config"; root.subject = "" }
+                    }
+                    TabButton {
+                        text: "Dev"; width: Math.max(90, implicitWidth)
+                        font.pixelSize: root.chromeFont
+                        onClicked: { root.tab = "dev"; root.subject = "" }
+                    }
+                }
+                // Why there are two pages at all, and why one of them refuses to
+                // let you type into it - which is the thing people expect and do
+                // not get.
+                InfoButton {
+                    title: "Monitor and Config"
+                    what: "Two questions asked at different times.<br><br>\
+    <b>Monitor</b> answers <i>is anything wrong right now</i> - one card per \
+    subject, each showing its unhappiest panel.<br>\
+    <b>Config</b> answers <i>how is this set up, and what would I change</i> - \
+    what is in effect, and which file declares it."
+                    why: "A single grid gives every panel equal weight, so \
+    <i>Qt prefix complete</i> and <i>disk at 95%</i> look identical until you \
+    read both. Monitor exists so that most of the time you can read nothing and \
+    move on."
+                    ifWrong: "<b>Config is deliberately not a settings form.</b> \
+    This machine is configured declaratively, so a field you could type into \
+    would either write somewhere Nix later overwrites, or fight Nix outright - \
+    either way lying about where configuration lives. It shows values, says which \
+    file they come from, and hands you a snippet."
+                    sections: [
+                        { title: "The three subjects", body: "\
+    Monitoring is split by subject because the questions are genuinely \
+    different.<br><br>\
+    <b>NixOS</b> - is this machine healthy? Memory and stall pressure, failed \
+    units in both scopes, generations and whether a reboot is pending, free space \
+    on the store's filesystem. Most of the actions live here, and they are the \
+    ones that can be run.<br><br>\
+    <b>Qt</b> and <b>Rust</b> - <i>will a build work in this environment?</i> \
+    Not <i>is it installed</i>. That distinction is the whole point: a Qt prefix \
+    can be present, correct and still missing the host tools <tt>cxx-qt</tt> \
+    needs, because on NixOS <tt>qmltyperegistrar</tt> and <tt>qmlcachegen</tt> \
+    live in qtdeclarative rather than qtbase - and the build fails late, naming \
+    the tool rather than the prefix.<br><br>\
+    Both describe the <b>engine's</b> environment, which is the background \
+    service's - not whichever shell you are sitting in. A devShell with a \
+    complete prefix will not change what those panels say. That is a real \
+    limitation, stated plainly rather than papered over.<br><br>\
+    References: <a href='https://nixos.org/manual/nixos/stable/'>NixOS \
+    manual</a> &middot; <a href='https://doc.qt.io/qt-6/'>Qt 6</a> &middot; \
+    <a href='https://doc.rust-lang.org/rustc/platform-support.html'>Rust \
+    platform support</a>" }
+                    ]
+                }
+                Item { Layout.fillWidth: true }
+
+                // Right-aligned and clipped rather than elided-from-the-left:
+                // TextEdit has no elide, and this keeps the tail visible exactly
+                // as ElideLeft did, minus the ellipsis. Ctrl+A reaches the part
+                // scrolled out of view, so the whole address or error can still
+                // be copied.
+                SelectableText {
+                    text: root.engineUp ? dash.apiBase : root.lastError
+                    color: root.engineUp ? palette.text : style.badDot
+                    font.pixelSize: style.fontBody
+                    horizontalAlignment: TextEdit.AlignRight
+                    wrapMode: TextEdit.NoWrap
+                    clip: true
+                    Layout.maximumWidth: 260
+                }
+
+                Button { text: "Refresh"; font.pixelSize: root.chromeFont; onClicked: root.refresh() }
+                // The name promises more than it does, so it needs saying: this
+                // re-reads the engine, it does not re-measure the machine.
+                InfoButton {
+                    title: "Refresh"
+                    what: "Re-fetches the engine's latest samples immediately. \
+    This window already polls every 2 seconds, so mostly it saves you a short \
+    wait."
+                    why: "It does <b>not</b> make the engine re-measure \
+    anything. Each panel is sampled on its own schedule by the background \
+    service, and this button shows whatever that schedule last produced. A disk \
+    figure can legitimately be half a minute old the instant after you press it."
+                    ifWrong: "<ul>\
+    <li><b>A value will not move.</b> Check its panel's interval below before \
+    suspecting the engine - 60s panels look frozen next to a 2s one.</li>\
+    <li><b>The address to the left is red.</b> The window is not reaching the \
+    engine at all; nothing will update until it comes back. Check \
+    <tt>systemctl --user status nixdash-engine</tt>.</li>\
+    <li><b>Everything is stale after a rebuild.</b> A changed service keeps \
+    running the old build until restarted - see the Deploying tab.</li></ul>"
+                    sections: [
+                        { title: "Sampling", body: "\
+    Collection happens in the engine, not here. Each panel declares its own \
+    interval, chosen against what the measurement costs:<br><br>\
+    <ul>\
+    <li><b>memory</b>, every 2s - two cheap reads of <tt>/proc</tt>; the only one \
+    that moves fast enough to watch</li>\
+    <li><b>failed-units</b>, every 15s - shells out to <tt>systemctl</tt> twice, \
+    user and system scope</li>\
+    <li><b>disk</b>, every 30s - one <tt>statvfs</tt>, but it changes slowly</li>\
+    <li><b>generations</b>, every 60s - a directory listing; changes only when \
+    you rebuild</li>\
+    <li><b>qt</b>, every 60s - runs <tt>qmake -query</tt></li>\
+    <li><b>rust</b>, every 60s - runs <tt>rustc</tt> and <tt>cargo</tt></li>\
+    </ul><br>\
+    History is kept in memory only, and is lost when the engine restarts. \
+    Nothing is written to disk and nothing leaves the machine.<br><br>\
+    Severity and the one-line headline are also decided in the engine, not in \
+    this window - so the desktop and browser builds cannot disagree about what a \
+    number means." },
+                        { title: "Deploying", body: "\
+    Changes to the project do not appear here until they are built and picked \
+    up.<br><br>\
+    <b>Any file in the repository</b> - <tt>home-manager switch</tt>, then the \
+    restart it prints:<br><tt>systemctl --user restart \
+    nixdash-engine.service</tt><br>\
+    The engine's Nix source is the whole tree, so editing <i>any</i> file \
+    rebuilds it to a new store path. Your <tt>home.nix</tt> sets \
+    <tt>startServices = \"suggest\"</tt>, which means home-manager prints that \
+    command rather than running it - restarting services automatically takes \
+    xfconf down and kills the Xfce panel on this machine.<br><br>\
+    <b>Changes to this window</b> - also close and reopen it. The UI is an \
+    ordinary desktop app, not a service, so a restart command does nothing for \
+    it.<br><br>\
+    <b>Panel icon or menu entry</b> - also <tt>xfce4-panel -r</tt>. New plugins \
+    are not drawn live.<br><br>\
+    Until you do those, a changed service keeps running the <i>old</i> build and \
+    everything here will look untouched." }
+                    ]
+                }
+
+                // "About", as a link with the word on it.
+                //
+                // The version stamp beside it used to BE this control: blue text
+                // with a hover tint and nothing else saying so. Nobody read it as
+                // clickable - it reads as a label, because it is one - so the
+                // gesture went undiscovered while the stamp carried the cost of
+                // being two things at once.
+                Item {
+                    Layout.alignment: Qt.AlignVCenter
+                    implicitWidth: aboutText.implicitWidth
+                    implicitHeight: aboutText.implicitHeight
+
+                    Text {
+                        id: aboutText
+                        text: "About"
+                        // The header's own colour, not the link blue. Nothing
+                        // else up here is blue: the breadcrumb that walks back
+                        // out of a subject is ordinary text with a pointing
+                        // cursor, and so is the engine address. style.link is
+                        // for <a href> inside info panels, and it doubles as
+                        // palette.highlight - so a blue word would have sat six
+                        // pixels from text that turns the same blue when
+                        // selected, meaning two different things at once.
+                        //
+                        // Text defaults to BLACK rather than to the palette, the
+                        // same trap SelectableText documents, so this is set
+                        // explicitly rather than left out.
+                        color: palette.text
+                        // The hover cue the crumbs do without. The word carries
+                        // the meaning; this only confirms it is pressable before
+                        // you commit to pressing it.
+                        font.underline: aboutArea.containsMouse
+                        font.pixelSize: root.chromeFont
+                    }
+
                     MouseArea {
+                        id: aboutArea
                         anchors.fill: parent
-                        enabled: root.subject !== ""
+                        hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: root.subject = ""
+                        onClicked: about.open()
                     }
                 }
 
-                Label {
-                    text: "\u203a"
-                    visible: root.subject !== ""
-                    font.pixelSize: style.fontBody
+                InfoButton {
+                    title: "About"
+                    what: "Opens a panel naming this window's <b>version</b>, \
+    when it was <b>built</b>, and the address it reads the app's background \
+    service from."
+                    why: "The build stamp is the only thing that tells two of \
+    these windows apart - the version number is <tt>0.1.0</tt> in every build \
+    ever made. It is how you check that the window in front of you contains a \
+    change you just made, rather than being an older one left open behind it."
+                    ifWrong: "<b>The label says which of two things it is.</b> \
+    <i>built</i> means something observed the finished article: this window's \
+    own file, or the bundle the server is handing out. <i>build started</i> \
+    means neither was available and the only stamp left is the one the build \
+    script wrote - and a build script runs BEFORE anything is compiled, so it \
+    reads early by however long the build took.<br><br>\
+    An installed copy is the usual <i>build started</i>: a store path's \
+    timestamp is pinned to the epoch by design, so there is no finish time to \
+    read.<br><br>\
+    A stamp older than your last rebuild means this window is a previous build \
+    still running: close it and start it again, because nothing in a running \
+    window updates itself. The background service is a separate program and can \
+    be a different build again, which the panel also names - that is usually why \
+    a change seems not to have taken."
                 }
 
+                // Which build this window is - and ordinary selectable text now.
+                //
+                // The About gesture moved to the link beside it, so this is a
+                // plain value: it selects and copies exactly like every other
+                // value in the window, with no click to arbitrate against and no
+                // threshold deciding which of the two you meant.
                 SelectableText {
-                    text: root.subjectNames[root.subject] || root.subject
-                    visible: root.subject !== ""
-                    font.pixelSize: style.fontBody
-                    font.bold: true
-                }
-            }
-
-            Item { Layout.fillWidth: true }
-
-            // Right-aligned and clipped rather than elided-from-the-left:
-            // TextEdit has no elide, and this keeps the tail visible exactly
-            // as ElideLeft did, minus the ellipsis. Ctrl+A reaches the part
-            // scrolled out of view, so the whole address or error can still
-            // be copied.
-            SelectableText {
-                text: root.engineUp ? dash.apiBase : root.lastError
-                color: root.engineUp ? palette.text : style.badDot
-                font.pixelSize: style.fontBody
-                horizontalAlignment: TextEdit.AlignRight
-                wrapMode: TextEdit.NoWrap
-                clip: true
-                Layout.maximumWidth: 260
-            }
-
-            Button { text: "Refresh"; font.pixelSize: root.chromeFont; onClicked: root.refresh() }
-            // The name promises more than it does, so it needs saying: this
-            // re-reads the engine, it does not re-measure the machine.
-            InfoButton {
-                title: "Refresh"
-                what: "Re-fetches the engine's latest samples immediately. \
-This window already polls every 2 seconds, so mostly it saves you a short \
-wait."
-                why: "It does <b>not</b> make the engine re-measure \
-anything. Each panel is sampled on its own schedule by the background \
-service, and this button shows whatever that schedule last produced. A disk \
-figure can legitimately be half a minute old the instant after you press it."
-                ifWrong: "<ul>\
-<li><b>A value will not move.</b> Check its panel's interval below before \
-suspecting the engine - 60s panels look frozen next to a 2s one.</li>\
-<li><b>The address to the left is red.</b> The window is not reaching the \
-engine at all; nothing will update until it comes back. Check \
-<tt>systemctl --user status nixdash-engine</tt>.</li>\
-<li><b>Everything is stale after a rebuild.</b> A changed service keeps \
-running the old build until restarted - see the Deploying tab.</li></ul>"
-                sections: [
-                    { title: "Sampling", body: "\
-Collection happens in the engine, not here. Each panel declares its own \
-interval, chosen against what the measurement costs:<br><br>\
-<ul>\
-<li><b>memory</b>, every 2s - two cheap reads of <tt>/proc</tt>; the only one \
-that moves fast enough to watch</li>\
-<li><b>failed-units</b>, every 15s - shells out to <tt>systemctl</tt> twice, \
-user and system scope</li>\
-<li><b>disk</b>, every 30s - one <tt>statvfs</tt>, but it changes slowly</li>\
-<li><b>generations</b>, every 60s - a directory listing; changes only when \
-you rebuild</li>\
-<li><b>qt</b>, every 60s - runs <tt>qmake -query</tt></li>\
-<li><b>rust</b>, every 60s - runs <tt>rustc</tt> and <tt>cargo</tt></li>\
-</ul><br>\
-History is kept in memory only, and is lost when the engine restarts. \
-Nothing is written to disk and nothing leaves the machine.<br><br>\
-Severity and the one-line headline are also decided in the engine, not in \
-this window - so the desktop and browser builds cannot disagree about what a \
-number means." },
-                    { title: "Deploying", body: "\
-Changes to the project do not appear here until they are built and picked \
-up.<br><br>\
-<b>Any file in the repository</b> - <tt>home-manager switch</tt>, then the \
-restart it prints:<br><tt>systemctl --user restart \
-nixdash-engine.service</tt><br>\
-The engine's Nix source is the whole tree, so editing <i>any</i> file \
-rebuilds it to a new store path. Your <tt>home.nix</tt> sets \
-<tt>startServices = \"suggest\"</tt>, which means home-manager prints that \
-command rather than running it - restarting services automatically takes \
-xfconf down and kills the Xfce panel on this machine.<br><br>\
-<b>Changes to this window</b> - also close and reopen it. The UI is an \
-ordinary desktop app, not a service, so a restart command does nothing for \
-it.<br><br>\
-<b>Panel icon or menu entry</b> - also <tt>xfce4-panel -r</tt>. New plugins \
-are not drawn live.<br><br>\
-Until you do those, a changed service keeps running the <i>old</i> build and \
-everything here will look untouched." }
-                ]
-            }
-
-            // "About", as a link with the word on it.
-            //
-            // The version stamp beside it used to BE this control: blue text
-            // with a hover tint and nothing else saying so. Nobody read it as
-            // clickable - it reads as a label, because it is one - so the
-            // gesture went undiscovered while the stamp carried the cost of
-            // being two things at once.
-            Item {
-                Layout.alignment: Qt.AlignVCenter
-                implicitWidth: aboutText.implicitWidth
-                implicitHeight: aboutText.implicitHeight
-
-                Text {
-                    id: aboutText
-                    text: "About"
-                    // The header's own colour, not the link blue. Nothing
-                    // else up here is blue: the breadcrumb that walks back
-                    // out of a subject is ordinary text with a pointing
-                    // cursor, and so is the engine address. style.link is
-                    // for <a href> inside info panels, and it doubles as
-                    // palette.highlight - so a blue word would have sat six
-                    // pixels from text that turns the same blue when
-                    // selected, meaning two different things at once.
-                    //
-                    // Text defaults to BLACK rather than to the palette, the
-                    // same trap SelectableText documents, so this is set
-                    // explicitly rather than left out.
-                    color: palette.text
-                    // The hover cue the crumbs do without. The word carries
-                    // the meaning; this only confirms it is pressable before
-                    // you commit to pressing it.
-                    font.underline: aboutArea.containsMouse
+                    Layout.alignment: Qt.AlignVCenter
+                    Layout.rightMargin: 2
+                    text: "v" + dash.version + " \u00b7 " + root.builtShown
                     font.pixelSize: root.chromeFont
                 }
+            }
+        }
 
-                MouseArea {
-                    id: aboutArea
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: about.open()
+        // Where you can GO, when the tab you are on has somewhere to go.
+        //
+        // The Qt page existed for an afternoon before anyone found it: its
+        // only way in was a link in the last row of a board about 850px
+        // down. A page reachable solely from inside another page is one you
+        // have to be told about, which is not navigation.
+        ToolBar {
+            width: parent.width
+            implicitHeight: 30
+            visible: root.subpagesFor(root.tab).length > 0
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 10
+                spacing: 4
+
+                Repeater {
+                    model: root.subpagesFor(root.tab)
+
+                    // Not a TabBar: these are not siblings of the tabs above
+                    // and must not look like them. A plain label that bolds
+                    // when it is where you are, with a hit area wide enough
+                    // for a fingertip - see the touchpad note in CLAUDE.md.
+                    Rectangle {
+                        Layout.preferredHeight: 24
+                        Layout.preferredWidth: subLabel.implicitWidth + 18
+                        radius: 4
+                        color: root.subject === modelData.id
+                               ? palette.mid : "transparent"
+
+                        SelectableText {
+                            id: subLabel
+                            anchors.centerIn: parent
+                            text: modelData.name
+                            font.pixelSize: root.chromeFont
+                            font.bold: root.subject === modelData.id
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            enabled: root.subject !== modelData.id
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.subject = modelData.id
+                        }
+                    }
                 }
-            }
 
-            InfoButton {
-                title: "About"
-                what: "Opens a panel naming this window's <b>version</b>, \
-when it was <b>built</b>, and the address it reads the app's background \
-service from."
-                why: "The build stamp is the only thing that tells two of \
-these windows apart - the version number is <tt>0.1.0</tt> in every build \
-ever made. It is how you check that the window in front of you contains a \
-change you just made, rather than being an older one left open behind it."
-                ifWrong: "<b>The label says which of two things it is.</b> \
-<i>built</i> means something observed the finished article: this window's \
-own file, or the bundle the server is handing out. <i>build started</i> \
-means neither was available and the only stamp left is the one the build \
-script wrote - and a build script runs BEFORE anything is compiled, so it \
-reads early by however long the build took.<br><br>\
-An installed copy is the usual <i>build started</i>: a store path's \
-timestamp is pinned to the epoch by design, so there is no finish time to \
-read.<br><br>\
-A stamp older than your last rebuild means this window is a previous build \
-still running: close it and start it again, because nothing in a running \
-window updates itself. The background service is a separate program and can \
-be a different build again, which the panel also names - that is usually why \
-a change seems not to have taken."
-            }
+                InfoButton {
+                    Layout.alignment: Qt.AlignVCenter
+                    title: "Subpages"
+                    what: "The pages that sit under the tab you are on, and \
+the trail below saying which of them you are reading. Only Dev has any \
+today."
+                    why: "<b>A page reachable only from inside another page \
+is one you have to be told about.</b> The Qt page spent its first afternoon \
+behind a link in the last row of a board most of a screen down, and was \
+reported as not existing. Somewhere that is always in the same place is the \
+difference between navigation and a scavenger hunt."
+                    ifWrong: "Monitor's three subjects are not here. They are \
+reached from cards on its overview, which is a different gesture for a \
+different thing: those are readings you pick between, and these are pages \
+that sit under another one.<br><br>\
+Changing tab clears which subpage you were on, so Dev - Qt does not survive \
+a trip to Monitor and back."
+                }
 
-            // Which build this window is - and ordinary selectable text now.
-            //
-            // The About gesture moved to the link beside it, so this is a
-            // plain value: it selects and copies exactly like every other
-            // value in the window, with no click to arbitrate against and no
-            // threshold deciding which of the two you meant.
-            SelectableText {
-                Layout.alignment: Qt.AlignVCenter
-                Layout.rightMargin: 2
-                text: "v" + dash.version + " \u00b7 " + root.builtShown
-                font.pixelSize: root.chromeFont
+                Item { Layout.fillWidth: true }
+            }
+        }
+
+        // Where you ARE. Moved out of the toolbar above so the two
+        // questions - what can I reach, and what am I reading - get a line
+        // each instead of sharing one crowded row.
+        ToolBar {
+            width: parent.width
+            implicitHeight: 28
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 10
+
+                    Row {
+                        id: crumbs
+                        spacing: 5
+                        Layout.leftMargin: 4
+                        Layout.alignment: Qt.AlignVCenter
+
+                        SelectableText {
+                            text: root.tab === "monitor" ? "Monitor"
+                                : root.tab === "config"  ? "Config" : "Dev"
+                            font.pixelSize: style.fontBody
+                            // Not dimmed when it is a parent rather than the place
+                            // you are - see Style.qml. What is left to say so is the
+                            // ordinary breadcrumb cue: the last crumb is where you
+                            // are, and only the ones before it answer a click.
+
+                            // No cursor change and no click on the overview, where
+                            // this crumb leads nowhere. A pointing hand over a label
+                            // that does nothing is a promise the click does not keep.
+                            MouseArea {
+                                anchors.fill: parent
+                                enabled: root.subject !== ""
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.subject = ""
+                            }
+                        }
+
+                        Label {
+                            text: "\u203a"
+                            visible: root.subject !== ""
+                            font.pixelSize: style.fontBody
+                        }
+
+                        SelectableText {
+                            text: root.subjectNames[root.subject] || root.subject
+                            visible: root.subject !== ""
+                            font.pixelSize: style.fontBody
+                            font.bold: true
+                        }
+                    }
+
+                InfoButton {
+                    Layout.alignment: Qt.AlignVCenter
+                    title: "Where you are"
+                    what: "The trail from the tab down to the page you are \
+reading. The last crumb is where you are; the ones before it are parents, \
+and a click on one goes back up."
+                    why: "A page's own heading scrolls away, and the tab bar \
+only says which of the three tabs you are on - not which page under it. On \
+a long page that leaves nothing on screen saying what you are looking at."
+                    ifWrong: "<b>Only a parent answers a click.</b> The last \
+crumb is where you already are, so it has no pointing hand and does \
+nothing - a cursor change over a label that leads nowhere is a promise the \
+click does not keep.<br><br>\
+One crumb and no arrow means you are on a tab's own page, which is the \
+normal state for Monitor and Config."
+                }
+
+                Item { Layout.fillWidth: true }
             }
         }
     }
