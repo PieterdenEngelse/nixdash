@@ -46,9 +46,33 @@ cmake --build build --parallel "${JOBS:-2}"
 stamp=$(date +%Y%m%d-%H%M%S)
 rel="releases/$stamp"
 mkdir -p "$rel"
-cp build/nixdash_ui_wasm_app.html "$rel/"
-cp build/nixdash_ui_wasm_app.js   "$rel/"
-cp build/nixdash_ui_wasm_app.wasm "$rel/"
+# The RUNTIME set, which is five files and not three. The page loads
+# qtloader.js - that is what turns "Loading..." into the app - and qtlogo.svg
+# while it waits. Publishing only the app's own three worked by accident for
+# as long as build/ was served directly, because these sat beside them there;
+# in a published tree they 404 and the page says Loading for ever, with no
+# error anywhere.
+for f in nixdash_ui_wasm_app.html nixdash_ui_wasm_app.js nixdash_ui_wasm_app.wasm \
+         qtloader.js qtlogo.svg; do
+    cp "build/$f" "$rel/"
+done
+
+# And check the page can resolve everything it asks for, rather than trusting
+# the list above to stay complete: a Qt upgrade that adds a file would
+# otherwise reappear as a permanent "Loading...". Fail here, where the message
+# can be read, instead of in a browser console that says nothing.
+missing=""
+for ref in $(grep -oE '(src|href)="[^"]+"' "$rel/nixdash_ui_wasm_app.html" \
+             | sed 's/.*="//; s/"$//'); do
+    case "$ref" in http*|data:*|"") continue ;; esac
+    [ -e "$rel/$ref" ] || missing="$missing $ref"
+done
+if [ -n "$missing" ]; then
+    echo "the published tree would be missing:$missing" >&2
+    echo "add it to the runtime set in $0" >&2
+    rm -rf "$rel"
+    exit 1
+fi
 # The root path serves this; see the note in serve.sh.
 ln -sfn nixdash_ui_wasm_app.html "$rel/index.html"
 # -f on the temp link, because an interrupted run can leave one behind and a
