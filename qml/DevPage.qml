@@ -60,7 +60,55 @@ Item {
     ///
     /// Posts the row's id and nothing else: what each id executes is fixed
     /// where the ids are defined, so no command travels over this.
+    /// Which builds wait for their command, and what each is called - both
+    /// filled from /api/builds. See refreshBuilds.
+    property var buildWaits: ({})
+    property var buildLabels: ({})
+
+    /// The build whose output the window is showing, and that output.
+    property string logId: ""
+    property string logPath: ""
+    property string logText: ""
+
+    /// Open the window on a build that is about to run, and keep it fed.
+    ///
+    /// Only for builds that WAIT. A detached one is over before this could
+    /// draw, and `restart-window` closes the very window the panel is in -
+    /// a progress report that dies with the thing reporting it.
+    function openBuildLog(id) {
+        if (root.buildWaits[id] !== true)
+            return
+        root.logId = id
+        root.logPath = ""
+        root.logText = ""
+        buildSheet.open()
+        logPoll.restart()
+    }
+
+    function pollBuildLog() {
+        if (root.logId === "")
+            return
+        var xhr = new XMLHttpRequest()
+        xhr.open("GET", root.apiBase + "/api/builds/"
+                 + encodeURIComponent(root.logId) + "/log")
+        xhr.onreadystatechange = function() {
+            if (xhr.readyState !== XMLHttpRequest.DONE || xhr.status !== 200)
+                return
+            try {
+                var d = JSON.parse(xhr.responseText)
+                root.logPath = d.path
+                root.logText = d.text
+            } catch (e) {
+                // Leave what is on screen. A parse failure is this app's
+                // problem, not the build's, and blanking the transcript
+                // would look like the command had produced nothing.
+            }
+        }
+        xhr.send()
+    }
+
     function runBuild(id) {
+        root.openBuildLog(id)
         root.setRun(id, { running: true, up: root.upNow(id) })
         root.runResult = ""
         var xhr = new XMLHttpRequest()
@@ -157,6 +205,18 @@ Item {
                 return
             try {
                 var d = JSON.parse(xhr.responseText)
+                // Which rows hold a request until their command ends, and so
+                // have a live log worth watching. Asked rather than assumed:
+                // a list here would be a second opinion about something the
+                // app's service already knows, and the two would drift.
+                var waits = {}
+                var names = {}
+                for (var i = 0; i < d.builds.length; i++) {
+                    waits[d.builds[i].id] = d.builds[i].waits === true
+                    names[d.builds[i].id] = d.builds[i].label
+                }
+                root.buildWaits = waits
+                root.buildLabels = names
                 var prev = root.runState["dev-engine"] ? root.runState["dev-engine"] : {}
                 if (prev.running)
                     return
@@ -1003,6 +1063,127 @@ for it, which is simply <tt>services.nixdash.browser.enable</tt> left off." },
                     font.family: "monospace"
                     font.pixelSize: style.fontBody
                     wrapMode: TextEdit.Wrap
+                }
+            }
+        }
+    }
+
+    // Poll while the build runs, then once more after it stops.
+    //
+    // The last poll matters: the command's final lines - the error, usually -
+    // are written in the moment it exits, and stopping the timer the instant
+    // `running` goes false would cut the transcript off exactly where it
+    // became worth reading.
+    Timer {
+        id: logPoll
+        interval: 1200
+        repeat: true
+        running: false
+        property bool sawRunning: false
+        onTriggered: {
+            root.pollBuildLog()
+            var st = root.runState[root.logId]
+            var isRunning = st !== undefined && st.running === true
+            if (isRunning) {
+                logPoll.sawRunning = true
+            } else if (logPoll.sawRunning) {
+                logPoll.sawRunning = false
+                logPoll.running = false
+            }
+        }
+    }
+
+    Popup {
+        id: buildSheet
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        width: Math.min(1100, root.width - 80)
+        height: Math.min(700, root.height - 80)
+        modal: false
+        focus: true
+        padding: 16
+        // Closing it stops the polling; the build itself is unaffected and
+        // keeps going, which the result line on the board still reports.
+        onClosed: { logPoll.running = false; root.logId = "" }
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 8
+
+            RowLayout {
+                Layout.fillWidth: true
+                SelectableText {
+                    text: root.buildLabels[root.logId] !== undefined
+                          ? root.buildLabels[root.logId] : root.logId
+                    font.bold: true
+                    font.pixelSize: 15
+                }
+                SelectableText {
+                    text: {
+                        var st = root.runState[root.logId]
+                        return (st !== undefined && st.running === true)
+                               ? "running…" : "finished"
+                    }
+                    font.pixelSize: style.fontBody
+                    color: style.textMuted
+                }
+                Item { Layout.fillWidth: true }
+                InfoButton {
+                    title: "What this window shows"
+                    what: "Everything the command has printed so far, both \
+its ordinary output and its errors, interleaved in the order a terminal \
+would have shown them."
+                    why: "<b>A switch takes about fifteen minutes and used to \
+report nothing until it ended.</b> Silence and a hang look identical, so the \
+only way to tell them apart was to go and find the process. This is the \
+same transcript, as it arrives."
+                    ifWrong: "<b>Closing this does not stop the build.</b> It \
+stops the watching; the command runs on and the board still reports how it \
+ended.<br><br>\
+A long quiet stretch is usually real - <tt>nix</tt> can spend minutes on one \
+derivation without printing - so an unchanging transcript is not by itself a \
+hang."
+                }
+                CloseX { onClicked: buildSheet.close() }
+            }
+
+            SelectableText {
+                Layout.fillWidth: true
+                visible: root.logPath !== ""
+                text: root.logPath
+                font.pixelSize: style.fontBody
+                color: style.textMuted
+                wrapMode: TextEdit.Wrap
+            }
+
+            ScrollView {
+                id: logView
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+
+                SelectableText {
+                    width: buildSheet.availableWidth
+                    text: root.logText === "" ? "waiting for output…" : root.logText
+                    font.family: "monospace"
+                    font.pixelSize: style.fontBody
+                    wrapMode: TextEdit.Wrap
+                    // Follow the tail, which is where a running command's
+                    // news is. Only while it runs: yanking the view to the
+                    // bottom while someone is reading the middle of a
+                    // finished transcript would be the opposite of helpful.
+                    onTextChanged: {
+                        var st = root.runState[root.logId]
+                        if (st === undefined || st.running !== true)
+                            return
+                        // 1.0 - size, not 1.0. `position` is the TOP of the
+                        // thumb, so 1.0 scrolls the whole document past the
+                        // top of the viewport and shows an empty panel -
+                        // which is exactly what the first version did, with
+                        // the output arriving and nothing on screen.
+                        var bar = logView.ScrollBar.vertical
+                        bar.position = Math.max(0, 1.0 - bar.size)
+                    }
                 }
             }
         }

@@ -35,6 +35,18 @@ use crate::actions::RunCommand;
 /// `cwd` is not optional for these: the service's own working directory is not
 /// a meaningful place to run `cargo`, and a build that silently ran in the
 /// wrong tree would be worse than one that failed to start.
+/// Where a build's live output is written while it runs.
+///
+/// One file per build id, in the runtime directory rather than the repo:
+/// it is the current run's scratch, not something to keep, and it must not
+/// turn up in `git status` after pressing a button.
+pub fn log_path(id: &str) -> PathBuf {
+    let base = std::env::var("XDG_RUNTIME_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| std::env::temp_dir());
+    base.join(format!("nixdash-build-{id}.log"))
+}
+
 pub(crate) fn repo() -> PathBuf {
     match std::env::var("NIXDASH_REPO") {
         Ok(p) => PathBuf::from(p),

@@ -117,7 +117,20 @@ fn argv_for(cmd: &RunCommand) -> Vec<String> {
 /// interpreted. An action's arguments come from system state (a unit name, for
 /// instance), and routing those through `sh -c` would turn a strangely named
 /// unit into command injection.
+/// Run it, and write what it prints to `log` as it arrives.
+///
+/// Both streams go to one file, interleaved as they were produced, because
+/// that is the order a terminal would have shown them in and the order the
+/// failure has to be read in.
+pub fn run_logged(cmd: &RunCommand, log: Option<&std::path::Path>) -> RunOutcome {
+    run_inner(cmd, log)
+}
+
 pub fn run(cmd: &RunCommand) -> RunOutcome {
+    run_inner(cmd, None)
+}
+
+fn run_inner(cmd: &RunCommand, log: Option<&std::path::Path>) -> RunOutcome {
     let argv = argv_for(cmd);
     let mut outcome = RunOutcome {
         argv: argv.clone(),
@@ -153,8 +166,13 @@ pub fn run(cmd: &RunCommand) -> RunOutcome {
     // Polling try_wait() without reading would block the child on a full pipe
     // while we waited for it to exit - a deadlock that only ends at the
     // timeout, and looks exactly like a slow rebuild.
-    let out_pipe = child.stdout.take().map(drain);
-    let err_pipe = child.stderr.take().map(drain);
+    // Truncated at the start of each run: a log showing the previous attempt
+    // under a command that is running now is worse than no log.
+    let sink = log
+        .and_then(|p| std::fs::File::create(p).ok())
+        .map(|f| std::sync::Arc::new(std::sync::Mutex::new(f)));
+    let out_pipe = child.stdout.take().map(|r| drain(r, sink.clone()));
+    let err_pipe = child.stderr.take().map(|r| drain(r, sink.clone()));
 
     // wait_timeout would need another dependency; polling is adequate for a
     // handful of long-running commands and keeps the dependency list honest.
@@ -337,11 +355,45 @@ pub fn stop(pid: u32) -> Result<(), String> {
     })
 }
 
-fn drain<R: std::io::Read + Send + 'static>(mut r: R) -> std::thread::JoinHandle<String> {
+/// Read a pipe to its end, optionally copying what arrives to a file.
+///
+/// `read_to_end` was enough while the only reader was the caller waiting for
+/// the whole thing. It is not enough for something that takes fifteen
+/// minutes: nobody can see a single byte until the command exits, so a
+/// `home-manager switch` was fifteen minutes of an unchanging screen with no
+/// way to tell work from a hang.
+///
+/// So this reads in CHUNKS and appends each one, which is what makes the log
+/// readable while the command is still running. Still bytes, not lines: a
+/// build that writes a progress bar with no newline would otherwise show
+/// nothing at all, which is the case that most needs showing.
+///
+/// Flushed per chunk, since the file is being read by another thread
+/// answering a request. Unflushed output is indistinguishable from a command
+/// that has gone quiet.
+fn drain<R: std::io::Read + Send + 'static>(
+    mut r: R,
+    log: Option<std::sync::Arc<std::sync::Mutex<std::fs::File>>>,
+) -> std::thread::JoinHandle<String> {
     std::thread::spawn(move || {
-        let mut buf = Vec::new();
-        let _ = r.read_to_end(&mut buf);
-        String::from_utf8_lossy(&buf).trim_end().to_string()
+        use std::io::Write;
+        let mut all = Vec::new();
+        let mut chunk = [0u8; 8192];
+        loop {
+            match r.read(&mut chunk) {
+                Ok(0) | Err(_) => break,
+                Ok(n) => {
+                    all.extend_from_slice(&chunk[..n]);
+                    if let Some(f) = &log {
+                        if let Ok(mut f) = f.lock() {
+                            let _ = f.write_all(&chunk[..n]);
+                            let _ = f.flush();
+                        }
+                    }
+                }
+            }
+        }
+        String::from_utf8_lossy(&all).trim_end().to_string()
     })
 }
 

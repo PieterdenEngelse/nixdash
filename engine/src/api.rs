@@ -97,6 +97,7 @@ pub fn router_with(state: AppState) -> Router {
         .route("/api/builds", get(list_builds))
         .route("/api/builds/{id}/run", post(run_build))
         .route("/api/builds/{id}/stop", post(stop_build))
+        .route("/api/builds/{id}/log", get(build_log))
         .route("/api/settings", get(list_settings).post(write_setting))
         .route("/api/settings/preview", post(preview_setting))
         .route("/api/justfile", get(read_justfile))
@@ -193,6 +194,11 @@ async fn list_builds(State(state): State<AppState>) -> Json<Value> {
             "id": b.id,
             "label": b.label,
             "daemon": matches!(b.execution, builds::Execution::Daemon(_)),
+            // Whether pressing it holds a request until the command ends -
+            // which is also exactly the set that writes a live log worth
+            // watching. A detached one is over before a window could open,
+            // and `restart-window` would close the window showing it.
+            "waits": matches!(b.execution, builds::Execution::Wait(_)),
         })).collect::<Vec<_>>(),
         "dev_engine": dev,
         "dev_port": builds::DEV_PORT,
@@ -213,9 +219,16 @@ async fn run_build(
     match build.execution {
         builds::Execution::Wait(cmd) => {
             // Same reasoning as run_action: these block a thread for minutes.
-            let outcome = tokio::task::spawn_blocking(move || crate::actions::runner::run(&cmd))
-                .await
-                .map_err(|e| ApiError::Internal(format!("run task failed: {e}")))?;
+            // Logged, so the window the button opens has something to show
+            // while this is still running. A switch takes fifteen minutes and
+            // reports nothing until it ends, which is indistinguishable from
+            // a hang by anyone who has not read this code.
+            let log = builds::log_path(build.id);
+            let outcome = tokio::task::spawn_blocking(move || {
+                crate::actions::runner::run_logged(&cmd, Some(&log))
+            })
+            .await
+            .map_err(|e| ApiError::Internal(format!("run task failed: {e}")))?;
             Ok(Json(json!({
                 "build": build.id,
                 "label": build.label,
@@ -556,6 +569,25 @@ async fn write_setting(
 pub struct DevshellToggle {
     key: String,
     enabled: bool,
+}
+
+/// What a build has printed so far.
+///
+/// Read on a timer while a build runs, so this answers for one that has not
+/// finished and one that never started alike. A missing file is "nothing
+/// yet", not an error: the first poll usually arrives before the command has
+/// produced a byte, and reporting that as a failure would put an error in
+/// the window every single time.
+async fn build_log(Path(id): Path<String>) -> Result<Json<serde_json::Value>, ApiError> {
+    let build = builds::find(&id).ok_or_else(|| ApiError::NotFound(format!("no build {id}")))?;
+    let path = builds::log_path(build.id);
+    let text = std::fs::read_to_string(&path).unwrap_or_default();
+    Ok(Json(serde_json::json!({
+        "build": build.id,
+        "label": build.label,
+        "path": path.display().to_string(),
+        "text": text,
+    })))
 }
 
 /// The project's `Justfile`, as it is on disk right now.
