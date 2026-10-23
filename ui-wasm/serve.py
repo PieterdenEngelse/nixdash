@@ -190,9 +190,25 @@ def main() -> int:
     RevalidateHandler.quiet_poller = "--quiet" in sys.argv[1:]
     port = int(args[0]) if args else 8099
 
+    # An optional directory, and it must NOT be resolved here.
+    #
+    # The tree to serve is normally the `current` symlink, which build.sh
+    # flips at a new release. Anything that resolves it once - os.path.realpath
+    # here, or systemd's WorkingDirectory, which is how this was first wired -
+    # pins the server to the release that happened to be current when it
+    # started, and it then serves that one for ever while `current` moves on.
+    # Keeping the symlink in the path means every open() resolves it again, so
+    # a publish is picked up with no restart.
+    #
+    # Default "." for the hand-started case, where serve.sh has already cd'd.
+    tree = args[1] if len(args) > 1 else "."
+
+    def handler(*a, **kw):
+        return RevalidateHandler(*a, directory=tree, **kw)
+
     # Threading, because the page fetches the glue and the module at once and
     # the module is 25M: a single-threaded server makes them queue.
-    server = http.server.ThreadingHTTPServer(("127.0.0.1", port), RevalidateHandler)
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", port), handler)
     print(f"http://127.0.0.1:{port}/", flush=True)
     print("(the engine must also be running: cargo run -p nixdash-engine)", flush=True)
     try:

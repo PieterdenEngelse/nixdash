@@ -322,8 +322,13 @@ in
         # a tree and tell you who holds the port, and systemd does both of
         # those better - the tree is configuration here, and a second start is
         # refused by the unit.
-        ExecStart = "${pkgs.python3}/bin/python3 ${toString ../.}/ui-wasm/serve.py ${toString cfg.browser.port} --quiet";
-        WorkingDirectory = cfg.browser.tree;
+        # The tree is an ARGUMENT, not WorkingDirectory. systemd resolves
+        # WorkingDirectory once at start, so with `current` being a symlink
+        # the server was pinned to whichever release was current then and
+        # served it for ever - verified: cwd was releases/20261022-073615
+        # while current had moved on. Passed as a path, every request
+        # resolves the symlink again.
+        ExecStart = "${pkgs.python3}/bin/python3 ${toString ../.}/ui-wasm/serve.py ${toString cfg.browser.port} ${cfg.browser.tree} --quiet";
         Restart = "on-failure";
         RestartSec = "5s";
       };
