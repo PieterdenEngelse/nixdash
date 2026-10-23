@@ -205,33 +205,42 @@ ApplicationWindow {
     /// a build script runs before anything is compiled. For the window that
     /// is about two minutes early; for the browser bundle, six to eight. A
     /// fresh build reading as stale is how this came up.
-    property string builtShown: dash.built
-    property bool builtIsExact: dash.builtExact
+    /// Bindings, not assignments: `panels` is replaced every two seconds,
+    /// so the browser's answer arrives on a later poll than the first paint
+    /// and has to be picked up when it does.
+    property string builtShown: {
+        var served = root.servedBundleBuilt()
+        return served !== "" ? served : dash.built
+    }
+    property bool builtIsExact: dash.builtExact || root.servedBundleBuilt() !== ""
 
-    /// Ask the server when the bundle it is serving was written.
+    /// When the bundle being served was built, or "" if that is not known.
     ///
-    /// Browser only - there is no server in the desktop build and nothing to
-    /// ask. HEAD rather than GET: the bundle is 25MB and the only thing
-    /// wanted is a header.
-    function refineBuiltFromBundle() {
+    /// Browser only. The first attempt at this asked the SERVER directly -
+    /// a HEAD on `nixdash_ui_wasm_app.wasm`, reading `Last-Modified`. That
+    /// works perfectly in the desktop build against the same server, and
+    /// did nothing at all in the browser: the stamp stayed at the baked-in
+    /// 13:43 for a bundle built at 13:47.
+    ///
+    /// A relative URL in QML resolves against the QML document's own base,
+    /// which in a wasm build is `qrc:/qt/qml/nixdash/` and not the page's
+    /// origin - so the request went somewhere that does not exist. The
+    /// desktop test passed because it used an absolute URL.
+    ///
+    /// This asks the app's service instead, which already measures that
+    /// file's mtime and which every other reading on screen comes from. No
+    /// second mechanism, no URL to resolve, and it is the one request shape
+    /// known to work in both halves.
+    function servedBundleBuilt() {
         if (!dash.browser)
-            return
-        var xhr = new XMLHttpRequest()
-        xhr.open("HEAD", "nixdash_ui_wasm_app.wasm")
-        xhr.onreadystatechange = function() {
-            if (xhr.readyState !== XMLHttpRequest.DONE)
-                return
-            var lm = xhr.status === 200
-                     ? xhr.getResponseHeader("Last-Modified") : ""
-            if (!lm)
-                return
-            var d = new Date(lm)
-            if (isNaN(d.getTime()))
-                return
-            root.builtShown = Qt.formatDateTime(d, "yyyy-MM-dd hh:mm")
-            root.builtIsExact = true
-        }
-        xhr.send()
+            return ""
+        var m = root.panels.filter(function(x) { return x.id === "qt-wasm" })
+        if (m.length === 0 || !m[0].latest)
+            return ""
+        var at = m[0].latest.value.built_at
+        if (!at)
+            return ""
+        return Qt.formatDateTime(new Date(at * 1000), "yyyy-MM-dd hh:mm")
     }
 
     property string tab: "monitor"   // "monitor" | "config"
@@ -295,7 +304,6 @@ ApplicationWindow {
         // multiple times" - a BUILD error from the qml compiler, which the
         // condensed build output then hid behind a successful-looking line.
         refresh()
-        root.refineBuiltFromBundle()
     }
     Timer { interval: 2000; running: true; repeat: true; onTriggered: root.refresh() }
 
