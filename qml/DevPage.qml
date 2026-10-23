@@ -194,6 +194,20 @@ Item {
         root.runResultOk = ok
         root.runResultId = id
         root.ranAction()
+
+        // Build both, then show me: the second press, pressed for you.
+        //
+        // Only on success, and that is the whole reason this is a condition
+        // rather than a sequence. A failed build must leave the window you
+        // are reading alone - losing it to a typo, eight minutes after the
+        // press, with the error in the window that just closed, is worse
+        // than any amount of waiting.
+        //
+        // `restart-window` rather than a new entry: it is the same button
+        // the row below carries, and chaining to it means there is one
+        // definition of what "open the window" does.
+        if (id === "both-uis" && ok)
+            root.runBuild("restart-window")
     }
 
     /// What is on the dev engine's port, asked of the port itself.
@@ -791,6 +805,8 @@ The <i>just file</i> link below opens the file itself." }
     then starts the binary in target/debug. It builds nothing, exactly like the \
     row above.",
                           why: "<b>Restart closes the window you pressed it in.</b> \
+It is also what <i>both UIs</i> runs when its build succeeds, which is why \
+a window can close eight minutes after you pressed something else. \
     So do not wait for a result here: the new window IS the result, and this one \
     will be gone. It starts the new window FIRST and closes the old ones only \
     once it has survived a moment - the other order leaves you with no window at \
@@ -867,23 +883,33 @@ step: <tt>just serve</tt> puts the built bundle on :8099, and \
                         // cost: knowing the browser is a second program does
                         // not help if acting on it means remembering a second
                         // command. This is both, in one press.
-                        { label: "both UIs", value: "cd ~/Projects/nixdash && nix develop --command just both",
-                          source: "one qml/ edit, both programs - about 8 minutes",
+                        { label: "both UIs", value: "cd ~/Projects/nixdash && nix develop --command just see",
+                          source: "one qml/ edit, both programs, then the window - about 8 minutes",
                           buildId: "both-uis", runLabel: "Build",
                           what: "Builds the window and the browser bundle \
-from the same <tt>qml/</tt>, one after the other. Desktop first, since it is \
-about two minutes against the browser's six.",
+from the same <tt>qml/</tt>, one after the other, and then opens the window \
+on what it just built. Desktop first, since it is about two minutes against \
+the browser's six.",
                           why: "<b>Nothing else builds both.</b> A cargo \
 build makes the window; only <tt>ui-wasm/build.sh</tt> makes the bundle. So \
 a QML edit reaches one program and leaves the other serving whatever it last \
 compiled - which looks identical to working, and is the asymmetry this whole \
-page exists to teach.",
-                          ifWrong: "<b>It launches nothing.</b> A window is \
-yours to open - the Desktop tile's <i>fresh window</i> does that - and the \
-served tab reloads itself once the bundle lands.<br><br>\
-Eight minutes is most of the cost of a switch, so it is not the way to see a \
-one-line change in the window alone. Use it when the edit has to reach both, \
-which is any change to a shared component." }
+page exists to teach.<br><br>\
+Opening the window is the second half of the same intention. Having built \
+it, you want to look at it - and that was two presses with eight minutes in \
+between, which is long enough to forget the second one.",
+                          ifWrong: "<b>It closes the window you press it \
+in</b>, like <i>fresh window</i> below, because it finishes by running \
+exactly that. Unlike it, the closing happens about eight minutes later - so \
+the window going away is this working, not something falling over.<br><br>\
+<b>Only if the build succeeds.</b> A failure leaves every window alone and \
+says why: losing the one you were reading to a typo, with the error in it, \
+is worse than any amount of waiting.<br><br>\
+The served tab reloads itself once the bundle lands, so the browser half \
+needs nothing from you. Eight minutes is most of the cost of a switch, so \
+this is not the way to see a one-line change in the window alone - use it \
+when the edit has to reach both, which is any change to a shared \
+component." }
                     ]
                 }
 
