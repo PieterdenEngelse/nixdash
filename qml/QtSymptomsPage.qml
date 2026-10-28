@@ -19,8 +19,9 @@ import QtQuick.Layouts
 // navigation. ConfigSection knows nothing about destinations - it hands the
 // href straight back out - so what a link MEANS stays here.
 //
-// One row deliberately has no destination: `qResourceFeatureZstd`. Writing
-// this index is what found that, which is the argument for having it.
+// Every row has a destination. One did not when this was written -
+// `qResourceFeatureZstd`, which no page covered - and writing the index is
+// what found that. Phase 6 gave it blocker D on the wasm page.
 //
 // Labels are the distinctive TOKEN of the error, not the whole line, and
 // that is a layout constraint as much as a reading one. ConfigSection sizes
@@ -170,7 +171,8 @@ link is the Emscripten pairing, not a missing library."
                       linkText: "trap 1 →", linkId: "wasm" },
                     { label: "qResourceFeatureZstd",
                       value: "rcc ran from the host Qt, which has zstd; the wasm Qt does not",
-                      source: "CXX_QT_AUTORCC_OPTIONS = \"--no-zstd\" - no page yet, see ~/docs/qt.md Part 1" },
+                      source: "CXX_QT_AUTORCC_OPTIONS = \"--no-zstd\", then touch build.rs",
+                      linkText: "blocker D →", linkId: "wasm" },
                     { label: "instant rebuild",
                       value: "the identical error after a correct fix - a stale qrc object",
                       source: "touch the crate's build.rs; a suspiciously fast build is the tell",

@@ -189,14 +189,37 @@ rename leaves behind.
   Starts the real app with no window and nothing on the user's display —
   verified. What it tells you is that the binary runs and stays up.
 
-  It does **not** report QML errors. A deliberate `ReferenceError` in
-  `Main.qml`'s `Component.onCompleted` produced zero bytes on stdout and
-  stderr, with and without `QT_LOGGING_RULES='*.debug=true'`. Why was not
-  chased. Do not treat silence here as evidence that a binding resolved.
+  **It reports QML errors, but only with `QT_FORCE_STDERR_LOGGING=1`:**
 
-  `./qml-check` is the tool that actually finds those, and it needs no app
-  at all. Neither can answer *does it look right*: that judgement is the
-  user's, always, and is what the screenshots were really being used for.
+  ```bash
+  QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen ./target/debug/nixdash-ui
+  ```
+
+  This paragraph used to say the opposite - that a deliberate `ReferenceError`
+  in `Main.qml`'s `Component.onCompleted` produced zero bytes, and "why was
+  not chased". It is chased now, and the answer was already written down in
+  `~/docs/qt.md` Part 1, *Also note*: **Qt's logging does not reach stderr on
+  this system.** `flake.nix:141` sets the variable in the devShell, so the
+  original experiment was almost certainly run outside `nix develop`.
+
+  Re-run on 2026-10-28, redirecting to files rather than piping:
+
+  | injected fault | var unset | var set |
+  |---|---|---|
+  | `PageThatIsNotInAnyBundle { }` | silent | `Main.qml:33:5: PageThatIsNotInAnyBundle is not a type` |
+  | `ReferenceError` in `Component.onCompleted` | silent | `Main.qml:325: ReferenceError: thisIdentifierDoesNotExist is not defined` |
+
+  Both classes, with file and line. The first is exactly what a component
+  missing from a resource bundle looks like.
+
+  **Redirect to a file, do not pipe.** `2>&1 | grep` loses the output: stderr
+  is block-buffered to a pipe and `timeout` kills the process before it
+  flushes. That alone makes a working check look like a silent one, and it
+  fooled this file's previous author and its corrector in the same session.
+
+  `./qml-check` remains the cheaper tool and needs no app at all. Neither can
+  answer *does it look right*: that judgement is the user's, always. For that,
+  render on `Xvfb :99` and grab the screen - never their display.
 
   **The browser UI does report them, in the browser console.** The generated
   glue binds Emscripten's streams straight at it — `var out =

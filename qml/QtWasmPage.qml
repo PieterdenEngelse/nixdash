@@ -232,7 +232,7 @@ not presence."
                 wrapMode: TextEdit.Wrap
                 textFormat: TextEdit.RichText
                 font.pixelSize: style.fontBody
-                text: "<b>Then three more, once Rust is in it.</b> The three \
+                text: "<b>Then four more, once Rust is in it.</b> The three \
 above are the cost of building Qt for WebAssembly. These are the cost of \
 building a <i>cxx-qt app</i> against it, and they are a later stage - the \
 Qt SDK is finished and working before any of them can happen.<br><br>\
@@ -323,6 +323,37 @@ which survives the toolchain file: \
                           source: "after your -D, before the find_package" },
                         { label: "fix", value: "-DQT_ADDITIONAL_PACKAGES_PREFIX_PATH",
                           source: "the supported variable; the toolchain file leaves it alone" }
+                    ]
+                }
+
+                ConfigSection {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    title: "D · rcc brings a zstd the wasm Qt lacks"
+                    what: "<tt>rcc</tt> runs from the <b>host</b> Qt, which \
+nixpkgs builds with zstd. The object it generates references \
+<tt>qResourceFeatureZstd()</tt>, and the wasm Qt Core has no zstd to \
+provide it."
+                    why: "<b>Its onset is delayed, which is what makes it \
+nasty.</b> rcc only compresses once the payload is worth compressing, so a \
+project with one small QML file links perfectly and the <i>same setup</i> \
+breaks when a few more are added. It looks like the new file broke the \
+build. It did not - assume this is latent in any Qt-wasm project with a \
+small <tt>.qrc</tt>."
+                    ifWrong: "<tt>undefined symbol: \
+qResourceFeatureZstd()</tt> at link.<br><br>\
+Pass <tt>CXX_QT_AUTORCC_OPTIONS = \"--no-zstd\"</tt> - colon-separated if \
+you need more than one. Then see trap 3 on the <i>QML meets Rust</i> page \
+before concluding it did not work: that variable is not tracked by cargo, so \
+the first rebuild after setting it relinks the stale object and reproduces \
+the identical error."
+                    rows: [
+                        { label: "symptom", value: "undefined symbol: qResourceFeatureZstd()",
+                          source: "at link, on a project that linked fine yesterday" },
+                        { label: "cause", value: "the host rcc compressed the payload",
+                          source: "it only starts once there is enough to compress" },
+                        { label: "fix", value: "CXX_QT_AUTORCC_OPTIONS = \"--no-zstd\"",
+                          source: "then touch build.rs - cargo does not track that variable" }
                     ]
                 }
             }
