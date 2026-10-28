@@ -115,6 +115,13 @@ jobs:
             printf '%s\n' "$out"
           }
 
+          # A trap, because wrapping individual commands is not enough: the
+          # third run of this failed with exit 1 and produced no annotation
+          # at all, which means the failing line was one `run` did not cover.
+          # ERR fires for any of them and reports the line number, so the next
+          # failure names itself whatever it is.
+          trap 'rc=$?; ann "step failed (line $LINENO, exit $rc)" "$(tail -n 20 engine.log 2>/dev/null)"' ERR
+
           run apt-get install -y ./target/debian/*.deb
           run test -x /usr/bin/nixdash-ui
           run test -f /usr/lib/systemd/user/nixdash-engine.service
@@ -231,6 +238,13 @@ jobs:
             if ! out=$("$@" 2>&1); then ann "$1" "$out"; exit 1; fi
             printf '%s\n' "$out"
           }
+
+          # A trap, because wrapping individual commands is not enough: the
+          # third run of this failed with exit 1 and produced no annotation
+          # at all, which means the failing line was one `run` did not cover.
+          # ERR fires for any of them and reports the line number, so the next
+          # failure names itself whatever it is.
+          trap 'rc=$?; ann "step failed (line $LINENO, exit $rc)" "$(tail -n 20 engine.log 2>/dev/null)"' ERR
 
           run dnf install -y ./target/generate-rpm/*.rpm
           run test -x /usr/bin/nixdash-ui

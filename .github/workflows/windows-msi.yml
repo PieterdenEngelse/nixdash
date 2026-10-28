@@ -137,11 +137,25 @@ jobs:
       - name: Install it and run it
         shell: pwsh
         run: |
+          # Annotations rather than `throw`: a thrown error gives the run
+          # summary nothing but "exit code 1", which is exactly the hole the
+          # third run fell into.
+          function Fail($title, $text) {
+            $t = (($text | Out-String) -replace "`r", '') -replace "`n", '%0A'
+            Write-Output "::error title=$title::$t"
+            exit 1
+          }
+
           $msi = (Get-Item *.msi).FullName
           Start-Process msiexec -ArgumentList '/i', $msi, '/qn', '/l*v', 'install.log' -Wait -NoNewWindow
+
           $dir = "$env:LOCALAPPDATA\Programs\nixdash"
-          foreach ($f in @('nixdash-ui.exe','nixdash-engine.exe')) {
-            if (-not (Test-Path "$dir\$f")) { Get-Content install.log -Tail 40; throw "not installed: $f" }
+          if (-not (Test-Path $dir)) {
+            Fail 'msiexec installed nothing' (Get-Content install.log -Tail 60)
+          }
+          $missing = @('nixdash-ui.exe','nixdash-engine.exe') | Where-Object { -not (Test-Path "$dir\$_") }
+          if ($missing) {
+            Fail "not installed: $($missing -join ', ')" (Get-ChildItem -Recurse -Name $dir)
           }
 
           # --spawn-engine, exactly as the Start Menu shortcut passes it.
@@ -153,7 +167,13 @@ jobs:
           }
           # The engine answering proves the UI found nixdash-engine.exe beside
           # itself and started it - nothing else here is listening on 3100.
-          if (-not $ok) { throw 'the UI did not bring up its engine on 127.0.0.1:3100' }
+          if (-not $ok) {
+            # What the UI left behind matters here: it may have started and
+            # died on a missing Qt DLL, which looks identical from 3100.
+            $procs = (Get-Process -Name nixdash-ui,nixdash-engine -ErrorAction SilentlyContinue |
+                      Select-Object Name,Id | Out-String)
+            Fail 'the UI did not bring up its engine on 3100' "running: $procs"
+          }
           Invoke-RestMethod http://127.0.0.1:3100/health
 
       - uses: actions/upload-artifact@v4
