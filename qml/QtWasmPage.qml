@@ -227,6 +227,106 @@ not presence."
                 }
             }
 
+            SelectableText {
+                width: parent.width
+                wrapMode: TextEdit.Wrap
+                textFormat: TextEdit.RichText
+                font.pixelSize: style.fontBody
+                text: "<b>Then three more, once Rust is in it.</b> The three \
+above are the cost of building Qt for WebAssembly. These are the cost of \
+building a <i>cxx-qt app</i> against it, and they are a later stage - the \
+Qt SDK is finished and working before any of them can happen.<br><br>\
+All three are the desktop traps' theme in a new disguise: <b>cxx-qt assumes \
+one coherent Qt prefix from one qmake</b>, and cross-compiling plus split \
+store paths breaks that assumption a different way each time. None appears \
+in any documentation; each was found here."
+            }
+
+            GridLayout {
+                width: parent.width
+                columns: root.width >= 1500 ? 3 : (root.width >= 900 ? 2 : 1)
+                columnSpacing: 14
+                rowSpacing: 14
+
+                ConfigSection {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    title: "A · cxx-qt grabs the host qmake"
+                    what: "<tt>cxx_qt_import_crate</tt> falls back to \
+<tt>Qt::qmake</tt>'s <tt>IMPORTED_LOCATION</tt> when you do not pass \
+<tt>QMAKE</tt> - and in a cross build that is the <i>host</i> tool."
+                    why: "<b>It then overrides your shell.</b> cxx-qt sets \
+QMAKE as a corrosion environment variable, so whatever you exported is \
+replaced silently. Exporting harder does not help; the argument has to be \
+passed to the macro."
+                    ifWrong: "<tt>qyieldcpu.h:47: error: use of undeclared \
+identifier '__builtin_ia32_pause'</tt> - an x86 intrinsic failing to compile \
+for wasm. It reads as a bug in Qt's headers. It is the host qmake having \
+described an x86 build to a wasm compiler."
+                    rows: [
+                        { label: "symptom", value: "__builtin_ia32_pause undeclared",
+                          source: "an x86 intrinsic, reached while compiling for wasm" },
+                        { label: "cause", value: "the host qmake answered",
+                          source: "and was re-exported over the one you set" },
+                        { label: "fix", value: "QMAKE ${CXXQT_QMAKE} in cxx_qt_import_crate",
+                          source: "passed to the macro - the environment is not enough" }
+                    ]
+                }
+
+                ConfigSection {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    title: "B · the cross qmake's qt.conf is relative"
+                    what: "Qt installs <tt>qt6-wasm/bin/qmake</tt> as a shell \
+script calling the host <tt>qmake6</tt> with a <tt>target_qt.conf</tt> whose \
+paths are relative - <tt>Prefix=../</tt>, \
+<tt>HostPrefix=../../result-env</tt>."
+                    why: "<b>They resolve against the caller, not the \
+script.</b> Run by hand from the right directory it works, which is what \
+makes this so hard to see; inside a cargo build script the same paths \
+resolved to <tt>&lt;host&gt;/bin/lib</tt>."
+                    ifWrong: "<tt>Could not find a prl path for Qt module: \
+Gui</tt> - and <tt>libQt6Gui.prl</tt> is present. The file it names is \
+there; the path it looked down was not. A shim with an absolute-path \
+qt.conf fixes it, and incidentally Qt's wrapper's <tt>$*</tt>, which should \
+be <tt>\"$@\"</tt>."
+                    rows: [
+                        { label: "symptom", value: "no prl path for Qt module: Gui",
+                          source: "for a .prl file that exists" },
+                        { label: "cause", value: "relative paths in target_qt.conf",
+                          source: "resolved against the build script's directory" },
+                        { label: "fix", value: "a shim qmake with absolute qt.conf",
+                          source: "every Prefix spelled out in full" }
+                    ]
+                }
+
+                ConfigSection {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    title: "C · the toolchain file resets the prefix path"
+                    what: "<tt>qt.toolchain.cmake</tt> resets \
+<tt>CMAKE_PREFIX_PATH</tt> to qtbase's own prefix, so a \
+<tt>-DCMAKE_PREFIX_PATH=&lt;merged&gt;</tt> on the command line is discarded \
+without a word."
+                    why: "<b>Invisible until the modules are in separate \
+prefixes</b> - which is to say, until the wasm Qt becomes a Nix derivation \
+rather than one directory. The same flag that worked throughout development \
+stops working at packaging time, having changed nothing."
+                    ifWrong: "<tt>Could NOT find Qt6Qml (missing: \
+Qt6Qml_DIR)</tt>, naming a module that is installed. Use Qt's own variable, \
+which survives the toolchain file: \
+<tt>-DQT_ADDITIONAL_PACKAGES_PREFIX_PATH</tt>."
+                    rows: [
+                        { label: "symptom", value: "could NOT find Qt6Qml",
+                          source: "a module that is installed and findable by hand" },
+                        { label: "cause", value: "qt.toolchain.cmake overwrites it",
+                          source: "after your -D, before the find_package" },
+                        { label: "fix", value: "-DQT_ADDITIONAL_PACKAGES_PREFIX_PATH",
+                          source: "the supported variable; the toolchain file leaves it alone" }
+                    ]
+                }
+            }
+
             // The fix in one place, same as the prefix page ends: three
             // boards of reasoning still leave you needing something to run.
             ConfigSection {

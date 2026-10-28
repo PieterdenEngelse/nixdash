@@ -4,10 +4,13 @@
 //! agree: `qtTopics`, which the subpage strip and the breadcrumb read, and
 //! `devComponent()`, which decides what the Loader shows. Add a topic to the
 //! first and forget the second and the strip offers a destination that lands
-//! on the overview - no error, no warning, just the wrong page. Add the
-//! `Component` but leave the QML file out of a `build.rs` and the page is
-//! absent from that resource bundle instead, which fails at load time in one
-//! of the two programs and not the other.
+//! on the overview - no error, no warning, just the wrong page. Name a
+//! `Component` whose QML file does not exist and the Loader renders nothing
+//! at all.
+//!
+//! Bundle membership is NOT checked here. `qml_registered` already does it,
+//! in both directions including the dangling entry a rename leaves behind;
+//! a second weaker copy was written in this file and removed.
 //!
 //! Both failures were reachable when this was written. Phases 1 and 2 of
 //! `docs/qt-page-plan.md` were each verified by clicking all three levels,
@@ -17,9 +20,8 @@
 //! finished when the code is written, it is finished when something fails if
 //! the code regresses.
 //!
-//! Reads `../qml`, `../ui/build.rs` and `../ui-wasm/rust/build.rs` as data,
-//! and lives here because the engine is the only test harness the project
-//! has.
+//! Reads `../qml/Main.qml` as data, and lives here because the engine is the
+//! only test harness the project has.
 
 use std::{fs, path::Path, path::PathBuf};
 
@@ -163,48 +165,6 @@ fn every_routed_page_exists() {
     assert!(
         missing.is_empty(),
         "broken Dev routes:\n    {}",
-        missing.join("\n    ")
-    );
-}
-
-/// Every QML file is in BOTH resource bundles.
-///
-/// One `qml/` feeds two programs. A file listed in `ui/build.rs` alone builds
-/// and runs on the desktop while the browser bundle is missing it, and the
-/// desktop build will not tell you - which is the asymmetry that makes this
-/// worth a test rather than a habit.
-#[test]
-fn every_qml_file_is_in_both_bundles() {
-    let root = repo_root();
-    let desktop = fs::read_to_string(root.join("ui/build.rs")).expect("ui/build.rs");
-    let browser =
-        fs::read_to_string(root.join("ui-wasm/rust/build.rs")).expect("ui-wasm/rust/build.rs");
-
-    let mut files: Vec<String> = fs::read_dir(root.join("qml"))
-        .expect("qml/ exists")
-        .filter_map(|e| e.ok())
-        .map(|e| e.file_name().to_string_lossy().to_string())
-        .filter(|n| n.ends_with(".qml"))
-        .collect();
-    files.sort();
-    assert!(files.len() > 5, "only found {} QML files", files.len());
-
-    let mut missing = Vec::new();
-    for name in &files {
-        let needle = format!("qml/{name}");
-        let in_desktop = desktop.contains(&needle);
-        let in_browser = browser.contains(&needle);
-        match (in_desktop, in_browser) {
-            (true, true) => {}
-            (false, false) => missing.push(format!("{name}: in neither build.rs")),
-            (true, false) => missing.push(format!("{name}: missing from ui-wasm/rust/build.rs")),
-            (false, true) => missing.push(format!("{name}: missing from ui/build.rs")),
-        }
-    }
-    assert!(
-        missing.is_empty(),
-        "{} QML file(s) absent from a resource bundle:\n    {}",
-        missing.len(),
         missing.join("\n    ")
     );
 }
