@@ -117,6 +117,13 @@ jobs:
           #
           # % must be encoded before the newlines are, or the %0A introduced
           # here would itself be re-encoded to %250A.
+          # Everything this step prints also goes to check.log, which the
+          # failure step below attaches to the release. Release assets are
+          # public; Actions logs and artifacts both need a token, even on a
+          # public repository, which is why annotations were the only channel
+          # and they have proved unreliable to read.
+          exec > >(tee -a check.log) 2>&1
+
           ann() {
             local title=$1 body=$2
             printf '::error::%s\n' "$title"
@@ -191,6 +198,38 @@ jobs:
       # Actions artifacts are only downloadable by a logged-in GitHub user and
       # they expire. A release asset is a plain public URL, which is the whole
       # point of building these.
+
+      # Only on failure, and only for the duration of getting this green.
+      - name: Attach the failure log to the release
+        if: failure()
+        run: |
+          {
+            echo "=== dpkg/rpm state ==="
+            (dpkg -l nixdash 2>/dev/null || rpm -q nixdash 2>/dev/null) || echo "(not installed)"
+            echo
+            echo "=== files the package placed ==="
+            (dpkg -L nixdash 2>/dev/null || rpm -ql nixdash 2>/dev/null) || echo "(none)"
+            echo
+            echo "=== /usr/bin ==="
+            ls -la /usr/bin/nixdash* 2>&1 || echo "(no nixdash binaries)"
+            echo
+            echo "=== engine log ==="
+            cat engine.log 2>/dev/null || echo "(no engine.log)"
+            echo
+            echo "=== the step's own output ==="
+            cat check.log 2>/dev/null || echo "(no check.log)"
+          } > "ci-diagnostics-${LABEL}.txt" 2>&1
+          echo "--- collected:"; wc -l "ci-diagnostics-${LABEL}.txt"
+        env:
+          LABEL: ${{ matrix.suffix || 'rpm' }}
+
+      - name: Publish the failure log
+        if: failure() && startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ci-diagnostics-*.txt
+          fail_on_unmatched_files: false
+
       - name: Attach to the release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
@@ -258,6 +297,13 @@ jobs:
           #
           # % must be encoded before the newlines are, or the %0A introduced
           # here would itself be re-encoded to %250A.
+          # Everything this step prints also goes to check.log, which the
+          # failure step below attaches to the release. Release assets are
+          # public; Actions logs and artifacts both need a token, even on a
+          # public repository, which is why annotations were the only channel
+          # and they have proved unreliable to read.
+          exec > >(tee -a check.log) 2>&1
+
           ann() {
             local title=$1 body=$2
             printf '::error::%s\n' "$title"
@@ -312,6 +358,38 @@ jobs:
           name: nixdash-rpm
           path: target/generate-rpm/*.rpm
           if-no-files-found: error
+
+
+      # Only on failure, and only for the duration of getting this green.
+      - name: Attach the failure log to the release
+        if: failure()
+        run: |
+          {
+            echo "=== dpkg/rpm state ==="
+            (dpkg -l nixdash 2>/dev/null || rpm -q nixdash 2>/dev/null) || echo "(not installed)"
+            echo
+            echo "=== files the package placed ==="
+            (dpkg -L nixdash 2>/dev/null || rpm -ql nixdash 2>/dev/null) || echo "(none)"
+            echo
+            echo "=== /usr/bin ==="
+            ls -la /usr/bin/nixdash* 2>&1 || echo "(no nixdash binaries)"
+            echo
+            echo "=== engine log ==="
+            cat engine.log 2>/dev/null || echo "(no engine.log)"
+            echo
+            echo "=== the step's own output ==="
+            cat check.log 2>/dev/null || echo "(no check.log)"
+          } > "ci-diagnostics-${LABEL}.txt" 2>&1
+          echo "--- collected:"; wc -l "ci-diagnostics-${LABEL}.txt"
+        env:
+          LABEL: ${{ matrix.suffix || 'rpm' }}
+
+      - name: Publish the failure log
+        if: failure() && startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ci-diagnostics-*.txt
+          fail_on_unmatched_files: false
 
       - name: Attach to the release
         if: startsWith(github.ref, 'refs/tags/v')
