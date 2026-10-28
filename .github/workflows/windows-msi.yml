@@ -1,0 +1,117 @@
+# Builds the Windows MSI.
+#
+# This exists because the MSI cannot be built on the development machine.
+# nixdash is developed on NixOS, and pkgsCross.mingwW64.qt6.qtdeclarative is
+# marked unsupported and does not even evaluate - so while the engine
+# cross-compiles fine (`just engine-windows`), the Qt UI has no cross path at
+# all. A Windows runner with an official Qt is the shortest way to a .exe, and
+# it is also the only place WiX itself is supported: `wix build` runs on Linux
+# but warns that all behaviour is undefined, and on a canonical four-line
+# .wxs it rejects a plainly relative Directory/@Name. Verified 2026-10-28.
+name: windows-msi
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  msi:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # MSVC, not gnu: the official Qt binaries for Windows are MSVC-built,
+      # and cxx-qt links Rust against them directly. Mixing a windows-gnu
+      # Rust with an MSVC Qt does not link.
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: 6.11.2
+          arch: win64_msvc2022_64
+          # qtdeclarative, qtsvg and qtshadertools are what nix/ui.nix pulls
+          # in; keep this list and that one in step.
+          modules: qtshadertools
+
+      - name: Build engine and UI
+        shell: pwsh
+        env:
+          # cxx-qt interrogates ONE qmake for headers, libs and host tools.
+          # On Windows the official Qt is already a single merged prefix, so
+          # this needs none of the qt6.env machinery nix/ui.nix documents.
+          CXXQT_QMAKE: ${{ env.QT_ROOT_DIR }}\bin\qmake.exe
+        run: |
+          cargo build --release -p nixdash-engine
+          cargo build --release -p nixdash-ui
+
+      # windeployqt is what turns two .exe files into a payload: it walks the
+      # UI's imports and copies the Qt DLLs, the platform and style plugins,
+      # and - with --qmldir - the QML modules the app actually imports.
+      - name: Stage the payload
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path stage | Out-Null
+          Copy-Item target\release\nixdash-ui.exe     stage\
+          Copy-Item target\release\nixdash-engine.exe stage\
+          Copy-Item assets\nixdash.ico                stage\
+          & "$env:QT_ROOT_DIR\bin\windeployqt.exe" --qmldir qml --release stage\nixdash-ui.exe
+
+      # Fail loudly rather than shipping an MSI whose shortcut points at a
+      # UI that cannot start. A missing Qt6Qml.dll here means windeployqt
+      # found no QML imports, which it reports as success.
+      - name: Check the payload is complete
+        shell: pwsh
+        run: |
+          foreach ($f in @('nixdash-ui.exe','nixdash-engine.exe','Qt6Core.dll','Qt6Qml.dll')) {
+            if (-not (Test-Path "stage\$f")) { throw "payload missing $f" }
+          }
+          if (-not (Test-Path 'stage\platforms\qwindows.dll')) { throw 'payload missing the windows platform plugin' }
+
+      - name: Build the MSI
+        shell: pwsh
+        run: |
+          dotnet tool install --global wix --version 5.*
+          # Version comes from the crate, so the MSI and the binary it
+          # installs can never claim different versions.
+          $v = (Select-String -Path engine\Cargo.toml -Pattern '^version = "(.+)"').Matches[0].Groups[1].Value
+          wix build packaging\wix\nixdash.wxs -arch x64 -d Version=$v -d StageDir=stage -o nixdash-$v-x64.msi
+
+      # Install the thing and run it. A Windows runner has a session, so the
+      # UI can actually start - which is the only way to exercise the sibling
+      # lookup in ui/src/engine_proc.rs and to find out whether windeployqt
+      # collected every QML module. A missing one is not a link error; it is a
+      # window that opens and draws nothing.
+      #
+      # /qn is silent and needs no elevation, because the package installs
+      # per-user: see the Scope note in packaging/wix/nixdash.wxs.
+      - name: Install it and run it
+        shell: pwsh
+        run: |
+          $msi = (Get-Item *.msi).FullName
+          Start-Process msiexec -ArgumentList '/i', $msi, '/qn', '/l*v', 'install.log' -Wait -NoNewWindow
+          $dir = "$env:LOCALAPPDATA\Programs\nixdash"
+          foreach ($f in @('nixdash-ui.exe','nixdash-engine.exe')) {
+            if (-not (Test-Path "$dir\$f")) { Get-Content install.log -Tail 40; throw "not installed: $f" }
+          }
+
+          # --spawn-engine, exactly as the Start Menu shortcut passes it.
+          Start-Process "$dir\nixdash-ui.exe" -ArgumentList '--spawn-engine'
+          $ok = $false
+          foreach ($i in 1..60) {
+            try { Invoke-RestMethod http://127.0.0.1:3100/health -TimeoutSec 2 | Out-Null; $ok = $true; break }
+            catch { Start-Sleep -Milliseconds 500 }
+          }
+          # The engine answering proves the UI found nixdash-engine.exe beside
+          # itself and started it - nothing else here is listening on 3100.
+          if (-not $ok) { throw 'the UI did not bring up its engine on 127.0.0.1:3100' }
+          Invoke-RestMethod http://127.0.0.1:3100/health
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nixdash-msi
+          path: "*.msi"
+          if-no-files-found: error

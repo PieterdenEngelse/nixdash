@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The Windows installer for nixdash.
+
+  Builds with WiX v5 (`wix build`), from a staging directory produced by
+  windeployqt. It cannot be built on NixOS: see README.md in this directory
+  for why, and .github/workflows/windows-msi.yml for the build that does work.
+
+  Two decisions worth stating, because both were deliberate and neither is
+  the obvious default:
+
+  1. NO WINDOWS SERVICE. An MSI can install one declaratively, which is the
+     usual argument for choosing MSI over NSIS, and it is the wrong thing
+     here. A service runs in session 0 as SYSTEM with no user context, and
+     every question the engine answers is about the *current user's*
+     environment. The Start Menu shortcut passes the spawn-engine flag
+     instead (literal spelling in Arguments, below), and
+     the UI owns the engine's lifetime: ui/src/engine_proc.rs.
+
+  2. PER-USER INSTALL. No UAC prompt, no admin rights, and the engine then
+     runs as the person who will read its output. A per-machine install would
+     put the binaries somewhere every user shares while the engine still only
+     ever reports on whoever launched it, which is a confusing bargain for no
+     gain.
+
+  Nothing here opens a firewall hole. The engine binds 127.0.0.1 only, and
+  Windows does not prompt for, or filter, purely loopback listeners.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+      Name="nixdash"
+      Manufacturer="Pieter den Engelse"
+      Version="$(var.Version)"
+      Scope="perUser"
+      Compressed="yes"
+      UpgradeCode="F491A1C3-B38E-4276-9145-094174D315F1">
+
+    <!--
+      The UpgradeCode above must never change: it is the identity Windows uses
+      to recognise an older nixdash and replace it. A new GUID here turns
+      every future release into a second, parallel installation.
+    -->
+    <MajorUpgrade
+        DowngradeErrorMessage="A newer version of nixdash is already installed. Uninstall it first." />
+
+    <!-- Embed the cab in the .msi, so one file is the whole installer. -->
+    <MediaTemplate EmbedCab="yes" />
+
+    <Icon Id="nixdash.ico" SourceFile="$(var.StageDir)\nixdash.ico" />
+    <Property Id="ARPPRODUCTICON" Value="nixdash.ico" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/PieterdenEngelse/nixdash" />
+
+    <!--
+      LocalAppDataFolder\Programs is where a per-user install belongs on
+      modern Windows; ProgramFiles is per-machine and would need elevation.
+    -->
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="ProgramsFolder" Name="Programs">
+        <Directory Id="INSTALLFOLDER" Name="nixdash" />
+      </Directory>
+    </StandardDirectory>
+
+    <Feature Id="Main" Title="nixdash" Level="1">
+      <ComponentGroupRef Id="Payload" />
+      <ComponentGroupRef Id="Shortcuts" />
+    </Feature>
+  </Package>
+
+  <Fragment>
+    <!--
+      The whole windeployqt staging directory, harvested at build time.
+
+      This is the one reason to prefer WiX v4+ over v3 for a Qt app. v3 needed
+      `heat` to pre-generate a component per file, which meant a checked-in
+      manifest of ~100 Qt DLLs and a nested QML tree that had to be
+      regenerated whenever Qt's file set changed. `Files` does it during
+      `wix build`, so the Qt payload is described by one line that never
+      needs editing.
+    -->
+    <ComponentGroup Id="Payload" Directory="INSTALLFOLDER">
+      <Files Include="$(var.StageDir)\**" />
+    </ComponentGroup>
+  </Fragment>
+
+  <Fragment>
+    <ComponentGroup Id="Shortcuts">
+      <Component Id="StartMenuShortcut" Directory="ProgramMenuFolder" Guid="*">
+        <!--
+          The spawn-engine flag is what makes this a working installation
+          rather than
+          a window that cannot reach anything: there is no service to
+          start the engine, so the shortcut asks the UI to do it. A
+          shortcut can pass an argument but cannot set an environment
+          variable, which is why the flag is on argv, not in the
+          environment.
+        -->
+        <Shortcut
+            Id="nixdashShortcut"
+            Name="nixdash"
+            Description="NixOS, Qt and Rust config and monitoring"
+            Target="[INSTALLFOLDER]nixdash-ui.exe"
+            Arguments="--spawn-engine"
+            WorkingDirectory="INSTALLFOLDER"
+            Icon="nixdash.ico" />
+
+        <!--
+          A per-user component needs a registry value under HKCU as its key
+          path: the installed files live in the user's profile, and Windows
+          needs something it can check to know the component is present.
+        -->
+        <RegistryValue
+            Root="HKCU"
+            Key="Software\nixdash"
+            Name="installed"
+            Type="integer"
+            Value="1"
+            KeyPath="yes" />
+
+        <RemoveFolder Id="RemoveStartMenuShortcut" On="uninstall" />
+      </Component>
+    </ComponentGroup>
+  </Fragment>
+</Wix>

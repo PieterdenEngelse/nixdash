@@ -1,0 +1,49 @@
+# systemd user unit, installed to /usr/lib/systemd/user/ by the .deb and .rpm.
+#
+# NOT enabled on install. Neither Debian nor Fedora enables a user unit from a
+# package, and deciding that every user on the machine gets a background
+# service is not the packager's call:
+#
+#   systemctl --user enable --now nixdash-engine
+#
+# Until that is run, the menu entry still works: it passes --spawn-engine and
+# the UI starts its own engine. Enabling the unit afterwards costs nothing -
+# the UI notices the port is already answering and attaches to it. See
+# ui/src/engine_proc.rs.
+#
+# Deliberately a *user* unit: the engine runs as you, with no privilege of its
+# own, and collects only what you can already read.
+[Unit]
+Description=nixdash engine (config and monitoring, loopback only)
+Documentation=https://github.com/PieterdenEngelse/nixdash
+# Without this the service can start before the user session has a D-Bus
+# socket, and the user-scope half of the failed-units collector reports
+# "unavailable" for the first few samples.
+After=graphical-session-pre.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/nixdash-engine
+Environment=NIXDASH_PORT=3100
+Restart=on-failure
+RestartSec=5s
+
+# No sandboxing options, deliberately. This has to stay in step with the long
+# explanation in nix/hm-module.nix, which is the authority: the engine runs
+# privileged actions through pkexec, and pkexec execs the target in place, so
+# anything restricting this unit restricts those too.
+#
+# The seccomp-based options are the trap worth repeating here. systemd cannot
+# install a seccomp filter in an unprivileged user unit without also setting
+# NoNewPrivileges, so LockPersonality and SystemCallArchitectures - the two
+# that look free - silently make setuid a no-op and break pkexec, while
+# `systemctl --user show` still reports NoNewPrivileges=no and the kernel
+# reports 1.
+#
+# On Debian and Fedora most of those privileged actions have nothing to act
+# on anyway, there being no nixos-rebuild. The policy is kept identical to the
+# home-manager unit regardless, so the two cannot drift into disagreeing about
+# why it is empty.
+
+[Install]
+WantedBy=default.target

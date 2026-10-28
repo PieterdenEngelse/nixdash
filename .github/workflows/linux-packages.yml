@@ -1,0 +1,202 @@
+# Builds the .deb and the .rpm.
+#
+# These cannot be built on the development machine, and not for want of
+# tooling: cargo-deb and dpkg are both in nixpkgs and run fine here. The
+# problem is what they would package. A build on NixOS links against Qt and
+# glibc in /nix/store - glibc 2.42, newer than any mainstream distribution
+# ships - and a native package cannot reference /nix/store at all. So each
+# package is built inside the distribution it targets, against that
+# distribution's own Qt.
+#
+# Containers rather than runner images, deliberately. The glibc floor is the
+# single most important property of these artifacts, and `debian:12` pins it
+# at 2.36 for as long as the tag exists, where `ubuntu-22.04` is a moving
+# target that GitHub retires on its own schedule.
+#
+#   debian:12   Qt 6.4.2, glibc 2.36  ->  Debian 12, Ubuntu 24.04 (Qt 6.4.2 too)
+#   debian:13   Qt 6.8,   glibc 2.41  ->  Debian 13
+#   fedora:41   Qt 6.8,   glibc 2.40  ->  Fedora 41
+#
+# One build per Qt MINOR, not one per glibc floor, and that is the reason
+# debian:13 is here rather than being covered by the debian:12 build. cxx-qt
+# links Qt's private API: readelf on nixdash-ui shows it requiring
+# Qt_6_PRIVATE_API alongside Qt_6 and Qt_6.<minor>. That tag carries no
+# version, and Qt does not promise private API stability across minor
+# releases, so a binary built against 6.4.2 may fail at runtime on 6.8 while
+# the shlibs dependency it carries is perfectly satisfied. Verified
+# 2026-10-28; the engine, which links no Qt, has none of these tags.
+#
+# Both jobs install the package they just built, which is the only way to find
+# out whether the dependencies named in ui/Cargo.toml actually exist in the
+# archive under those names. A .deb that builds and cannot be installed is the
+# failure mode worth catching here rather than in an issue report.
+name: linux-packages
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  deb:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: debian:12
+            suffix: deb12
+          - image: debian:13
+            suffix: deb13
+    container: ${{ matrix.image }}
+    steps:
+      # Before checkout: actions/checkout needs git, and the container has none.
+      - name: Build dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            ca-certificates curl git build-essential pkg-config \
+            qt6-base-dev qt6-declarative-dev qt6-svg-dev qt6-shadertools-dev \
+            libgl1-mesa-dev
+
+      - uses: actions/checkout@v4
+
+      # Debian 12 ships Rust 1.63, too old for this workspace.
+      - name: Rust
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+            | sh -s -- -y --default-toolchain stable --profile minimal
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Build
+        env:
+          # cxx-qt interrogates ONE qmake for headers, libs and host tools.
+          # Debian's Qt is already a single merged prefix, so none of the
+          # qt6.env machinery that nix/ui.nix needs applies here.
+          CXXQT_QMAKE: /usr/bin/qmake6
+        run: cargo build --release -p nixdash-engine -p nixdash-ui
+
+      - name: Package
+        run: |
+          cargo install cargo-deb --locked
+          # --no-build: both binaries are already built above, and cargo-deb
+          # would otherwise build only the UI crate it was pointed at.
+          cargo deb -p nixdash-ui --no-build
+          dpkg-deb --info target/debian/*.deb
+          dpkg-deb --contents target/debian/*.deb
+
+      # apt, not dpkg -i: apt resolves the dependencies, so a QML module named
+      # wrongly in ui/Cargo.toml fails here instead of at first launch.
+      - name: Install it, and check the engine runs
+        run: |
+          apt-get install -y ./target/debian/*.deb
+          test -x /usr/bin/nixdash-ui
+          test -f /usr/lib/systemd/user/nixdash-engine.service
+          test -f /usr/share/applications/nixdash.desktop
+          desktop-file-validate /usr/share/applications/nixdash.desktop
+          NIXDASH_PORT=3100 /usr/bin/nixdash-engine &
+          for i in $(seq 1 40); do
+            curl -sf http://127.0.0.1:3100/health && break || sleep 0.5
+          done
+          curl -sf http://127.0.0.1:3100/health
+          kill %1
+
+      # The one test that cannot be run on the development machine at all:
+      # CLAUDE.md forbids putting the window on the author's screen, and the
+      # sibling lookup in ui/src/engine_proc.rs is only exercised by actually
+      # launching the installed UI. A container has no screen to invade.
+      #
+      # This is also the only check that the QML dependencies are complete:
+      # a missing qml6-module-* is not a link error, it is a window that opens
+      # and draws nothing, so it cannot be caught by dpkg or by the linker.
+      - name: The UI starts, finds its sibling engine, and loads its QML
+        run: |
+          apt-get install -y --no-install-recommends xvfb
+          xvfb-run -a /usr/bin/nixdash-ui --spawn-engine >ui.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf http://127.0.0.1:3100/health >/dev/null && break || sleep 0.5
+          done
+          # The engine answering proves the UI located nixdash-engine beside
+          # itself and started it; nothing else on this machine is listening.
+          curl -sf http://127.0.0.1:3100/health
+          # A QML failure leaves a running process and an empty window, so the
+          # log is the only place it shows up.
+          if grep -qiE 'qml|QQmlApplicationEngine|is not a type' ui.log; then
+            echo '--- QML errors:'; cat ui.log; exit 1
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          # The distro is in the artifact name because the two .deb files are
+          # NOT interchangeable, despite both being .deb: see the note on
+          # Qt_6_PRIVATE_API at the top.
+          name: nixdash-${{ matrix.suffix }}
+          path: target/debian/*.deb
+          if-no-files-found: error
+
+  rpm:
+    runs-on: ubuntu-latest
+    container: fedora:41
+    steps:
+      - name: Build dependencies
+        run: |
+          dnf install -y \
+            git curl gcc gcc-c++ make pkgconf-pkg-config \
+            qt6-qtbase-devel qt6-qtdeclarative-devel qt6-qtsvg-devel \
+            qt6-qtshadertools-devel mesa-libGL-devel
+
+      - uses: actions/checkout@v4
+
+      - name: Rust
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+            | sh -s -- -y --default-toolchain stable --profile minimal
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Build
+        env:
+          CXXQT_QMAKE: /usr/bin/qmake6
+        run: cargo build --release -p nixdash-engine -p nixdash-ui
+
+      - name: Package
+        run: |
+          cargo install cargo-generate-rpm --locked
+          # cargo-deb strips the binaries it recognises as Cargo artifacts;
+          # cargo-generate-rpm has no equivalent, so do it here or ship ~2 MB
+          # of symbols. Measured on the .deb: 4.58 MB -> 3.49 MB for the
+          # engine, 3.60 MB -> 2.77 MB for the UI.
+          strip target/release/nixdash-engine target/release/nixdash-ui
+          cargo generate-rpm -p ui
+          rpm -qip target/generate-rpm/*.rpm
+          rpm -qlp target/generate-rpm/*.rpm
+
+      - name: Install it, and check the engine runs
+        run: |
+          dnf install -y ./target/generate-rpm/*.rpm
+          test -x /usr/bin/nixdash-ui
+          test -f /usr/lib/systemd/user/nixdash-engine.service
+          NIXDASH_PORT=3100 /usr/bin/nixdash-engine &
+          for i in $(seq 1 40); do
+            curl -sf http://127.0.0.1:3100/health && break || sleep 0.5
+          done
+          curl -sf http://127.0.0.1:3100/health
+          kill %1
+
+      # See the long note on the equivalent step in the deb job.
+      - name: The UI starts, finds its sibling engine, and loads its QML
+        run: |
+          dnf install -y xorg-x11-server-Xvfb
+          xvfb-run -a /usr/bin/nixdash-ui --spawn-engine >ui.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf http://127.0.0.1:3100/health >/dev/null && break || sleep 0.5
+          done
+          curl -sf http://127.0.0.1:3100/health
+          if grep -qiE 'qml|QQmlApplicationEngine|is not a type' ui.log; then
+            echo '--- QML errors:'; cat ui.log; exit 1
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nixdash-rpm
+          path: target/generate-rpm/*.rpm
+          if-no-files-found: error

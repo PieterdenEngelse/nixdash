@@ -1,6 +1,7 @@
 //! nixdash desktop UI - Qt/QML with a Rust-defined QObject.
 
 pub mod cxxqt_object;
+pub mod engine_proc;
 
 use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QQuickStyle, QString, QUrl};
 
@@ -85,6 +86,14 @@ fn main() {
     // every button, switch and combo box. Basic hardcodes most of its own
     // colours, which would leave light controls sitting in dark panels.
     QQuickStyle::set_style(&QString::from("Fusion"));
+
+    // Held for the whole run, because dropping it kills the engine it
+    // started. `--spawn-engine` is passed by the packages' desktop entry and
+    // Start Menu shortcut; without it this is None and nothing starts, which
+    // is what keeps the systemd-user-service path untouched. Qt leaves argv
+    // it does not recognise alone, so the flag reaching QGuiApplication below
+    // is harmless.
+    let _engine = engine_proc::start();
 
     let mut app = QGuiApplication::new();
     let mut engine = QQmlApplicationEngine::new();

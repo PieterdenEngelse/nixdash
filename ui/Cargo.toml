@@ -2,6 +2,10 @@
 name = "nixdash-ui"
 version = "0.1.0"
 edition = "2021"
+# The repository is dual-licensed; both files ship in the packages below.
+license = "MIT OR Apache-2.0"
+description = "NixOS, Qt and Rust config and monitoring - desktop UI"
+repository = "https://github.com/PieterdenEngelse/nixdash"
 
 [dependencies]
 cxx = "1.0"
@@ -10,3 +14,118 @@ cxx-qt-lib = { version = "0.10", features = ["full"] }
 
 [build-dependencies]
 cxx-qt-build = "0.10"
+
+# ---------------------------------------------------------------------------
+# Native Linux packages.
+#
+# Both live on the UI crate rather than the engine's because the package is
+# the user-facing thing: it owns the desktop entry and the icon, and it pulls
+# the engine in beside it. Paths are relative to this file, so ../ throughout.
+#
+# Neither can be built on the development machine. A .deb or .rpm must link
+# against the distribution's own Qt and glibc; a build here links against
+# /nix/store and glibc 2.42, which is newer than any mainstream distribution
+# ships. Each package is therefore built inside its own distribution by
+# .github/workflows/linux-packages.yml.
+# ---------------------------------------------------------------------------
+
+[package.metadata.deb]
+name = "nixdash"
+maintainer = "Pieter den Engelse <denengelse@gmail.com>"
+copyright = "2026, Pieter den Engelse"
+section = "utils"
+priority = "optional"
+extended-description = """\
+Local-first config and monitoring for one machine: a Rust engine with a \
+Qt/QML desktop UI, loopback only, no accounts and no telemetry. \
+Monitors Qt and Rust build environments, and NixOS where there is one \
+to monitor - off NixOS those panels report that they could not look \
+rather than inventing a reading."""
+
+# $auto is dpkg-shlibdeps, which reads the ELF and maps each .so back to the
+# package owning it - so the libQt6* dependencies never need listing or
+# updating here. What it cannot see are the QML modules: those are loaded by
+# name at runtime through the QML engine, not linked, so the binary carries no
+# trace of them and they have to be named by hand. qml/*.qml imports exactly
+# QtQuick, QtQuick.Controls and QtQuick.Layouts; Controls additionally needs
+# its Fusion style at runtime, which is the style ui/src/main.rs sets.
+depends = "$auto, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-layouts, qml6-module-qtquick-templates, qml6-module-qtquick-window"
+
+# The two binary paths have no ../ , unlike every other asset here, and that
+# is not an oversight: cargo-deb only recognises a source path beginning with
+# exactly "target/release/" as a Cargo artifact, and maps it to the workspace
+# target directory itself. Writing ../target/release/ resolves to the same
+# file but is treated as an opaque data file, which silently skips stripping
+# and leaves ~2 MB of symbols in the package.
+assets = [
+    ["target/release/nixdash-ui", "usr/bin/", "755"],
+    ["target/release/nixdash-engine", "usr/bin/", "755"],
+    ["../packaging/linux/nixdash.desktop", "usr/share/applications/", "644"],
+    ["../packaging/linux/nixdash-engine.service", "usr/lib/systemd/user/", "644"],
+    ["../assets/nixdash.svg", "usr/share/icons/hicolor/scalable/apps/nixdash.svg", "644"],
+    ["../README.md", "usr/share/doc/nixdash/", "644"],
+    ["../LICENSE-MIT", "usr/share/doc/nixdash/", "644"],
+    ["../LICENSE-APACHE", "usr/share/doc/nixdash/", "644"],
+]
+
+[package.metadata.generate-rpm]
+name = "nixdash"
+summary = "NixOS, Qt and Rust config and monitoring (loopback only)"
+license = "MIT OR Apache-2.0"
+
+# rpm's own find-requires, the equivalent of $auto above: it reads the ELF and
+# emits a soname dependency per linked library. The QML modules are invisible
+# to it for the same reason, and on Fedora all three live in one package.
+#
+# NOTE the asset paths below carry no ../ at all, where the cargo-deb section
+# above needs it on everything but the binaries. The two tools resolve from
+# different places: cargo-deb resolves relative to this manifest (ui/), while
+# cargo generate-rpm resolves relative to the working directory, and CI runs
+# it from the workspace root. Unlike the cargo-deb convention this one is
+# unverified locally - cargo-generate-rpm is not in nixpkgs, so the rpm job
+# is the first thing that ever executes it.
+auto-req = "auto"
+
+[package.metadata.generate-rpm.requires]
+qt6-qtdeclarative = "*"
+qt6-qtsvg = "*"
+
+[[package.metadata.generate-rpm.assets]]
+source = "target/release/nixdash-ui"
+dest = "/usr/bin/nixdash-ui"
+mode = "755"
+
+[[package.metadata.generate-rpm.assets]]
+source = "target/release/nixdash-engine"
+dest = "/usr/bin/nixdash-engine"
+mode = "755"
+
+[[package.metadata.generate-rpm.assets]]
+source = "packaging/linux/nixdash.desktop"
+dest = "/usr/share/applications/nixdash.desktop"
+mode = "644"
+
+[[package.metadata.generate-rpm.assets]]
+source = "packaging/linux/nixdash-engine.service"
+dest = "/usr/lib/systemd/user/nixdash-engine.service"
+mode = "644"
+
+[[package.metadata.generate-rpm.assets]]
+source = "assets/nixdash.svg"
+dest = "/usr/share/icons/hicolor/scalable/apps/nixdash.svg"
+mode = "644"
+
+[[package.metadata.generate-rpm.assets]]
+source = "README.md"
+dest = "/usr/share/doc/nixdash/README.md"
+mode = "644"
+
+[[package.metadata.generate-rpm.assets]]
+source = "LICENSE-MIT"
+dest = "/usr/share/doc/nixdash/LICENSE-MIT"
+mode = "644"
+
+[[package.metadata.generate-rpm.assets]]
+source = "LICENSE-APACHE"
+dest = "/usr/share/doc/nixdash/LICENSE-APACHE"
+mode = "644"

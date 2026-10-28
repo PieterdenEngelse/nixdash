@@ -1,0 +1,16 @@
+[Desktop Entry]
+Type=Application
+Name=nixdash
+Comment=NixOS, Qt and Rust config and monitoring
+# --spawn-engine because the packages do not enable the systemd user unit; the
+# entry has to work on a fresh install. If the unit is running, the UI
+# attaches to the engine already on the port instead of starting a second one.
+# See ui/src/engine_proc.rs.
+Exec=nixdash-ui --spawn-engine
+# Themed name, not an absolute path: the icon is scalable, so the theme lookup
+# is what lets a 24px panel and a 48px menu each get a crisp render from the
+# one SVG.
+Icon=nixdash
+Terminal=false
+Categories=System;Monitor;
+Keywords=nixos;nix;monitoring;qt;rust;

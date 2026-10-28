@@ -222,6 +222,42 @@ nix run .            # engine
 nix run .#ui         # desktop UI
 ```
 
+### On a machine without Nix
+
+Native packages, built by CI — see
+[packaging/linux/README.md](packaging/linux/README.md) and
+[packaging/wix/README.md](packaging/wix/README.md).
+
+| | Built in | Qt | glibc | Runs on |
+|---|---|---|---|---|
+| `.deb` | `debian:12` | 6.4.2 | 2.36 | Debian 12, Ubuntu 24.04 |
+| `.deb` | `debian:13` | 6.8 | 2.41 | Debian 13 |
+| `.rpm` | `fedora:41` | 6.8 | 2.40 | Fedora 41 |
+| `.msi` | `windows-latest` | 6.11.2 | — | Windows 10+ |
+
+One build per Qt **minor**, not per glibc floor: cxx-qt links Qt's private
+API, so a package is only safe on the Qt line it was built against. See
+[packaging/linux/README.md](packaging/linux/README.md).
+
+None of them can be built on a NixOS machine. A native package cannot
+reference `/nix/store`, and a build here links against Qt and glibc 2.42 that
+no distribution ships; the Windows UI has no cross path at all, because
+`pkgsCross.mingwW64.qt6` is unsupported. The engine alone does cross-compile:
+
+```sh
+just engine-windows   # nixdash-engine.exe, the engine half of the MSI
+```
+
+The Linux packages install the engine as a systemd **user** unit, which is the
+same shape as the home-manager module above. It is not enabled on install —
+until you run `systemctl --user enable --now nixdash-engine`, the menu entry
+starts its own engine and stops it with the window.
+
+On any of them the NixOS panels report *could not look* rather than inventing
+a reading: there is no `/etc/nixos` to read. The Qt and Rust panels, which ask
+whether a build would work in this environment, are the ones that still
+answer.
+
 ## After installing
 
 | | |
