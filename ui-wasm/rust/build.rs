@@ -26,6 +26,7 @@ fn main() {
             "qml/DevPage.qml",
             "qml/DevQtPage.qml",
             "qml/QtPrefixPage.qml",
+            "qml/QtRustPage.qml",
             "qml/QtWasmPage.qml",
             "qml/ConfigSection.qml",
             "qml/SettingsSection.qml",

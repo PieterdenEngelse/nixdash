@@ -346,7 +346,8 @@ ApplicationWindow {
     readonly property var qtTopics: [
         { "id": "", "name": "Overview" },
         { "id": "prefix", "name": "Why there is no single Qt" },
-        { "id": "wasm", "name": "Two Qts, and the Emscripten between them" }
+        { "id": "wasm", "name": "Two Qts, and the Emscripten between them" },
+        { "id": "rust", "name": "QML meets Rust" }
     ]
 
     /// A topic's display name, for the trail.
@@ -1129,6 +1130,8 @@ window was told about.</li></ul>"
             return qtPrefixPage
         if (root.topic === "wasm")
             return qtWasmPage
+        if (root.topic === "rust")
+            return qtRustPage
         return devQtPage
     }
 
@@ -1137,6 +1140,21 @@ window was told about.</li></ul>"
         QtPrefixPage {
             panels: root.panelsFor("qt")
             apiBase: dash.apiBase
+        }
+    }
+
+    // Handed the bridge's own values, not just panels: this page's board is
+    // the Rust/QML boundary itself, and reading them from `dash` here is
+    // what makes the board evidence rather than a description.
+    Component {
+        id: qtRustPage
+        QtRustPage {
+            panels: root.panelsFor("qt")
+            apiBase: dash.apiBase
+            appVersion: dash.version
+            builtStamp: dash.built
+            builtExact: dash.builtExact
+            browser: dash.browser
         }
     }
 
