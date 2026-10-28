@@ -206,10 +206,14 @@ named by <tt>QT_HOST_PATH</tt>. Point that at the wasm one and the build \
 tries to execute wasm binaries.<br><br>\
 Qt for WebAssembly is built against one Emscripten release and pins it. The \
 same 4.0 series is usually tolerated; a different major is not."
-                    ifWrong: "<b>Emscripten expected is not a comparison.</b> \
-It states what this Qt wants; nothing here checks your emsdk against it. If \
-yours differs, pin the nixpkgs carrying the matching emcc rather than \
-overriding Qt's check.<br><br>\
+                    ifWrong: "<b>The Emscripten rows are a comparison \
+now</b>, and of the right pair: what this Qt asked for against what it was \
+actually built with, read from the derivation. Not your PATH - there is no \
+emcc there, and an unrelated system one would be a false alarm about a \
+toolchain no build uses.<br><br>\
+Compared on major.minor, because that is what Qt enforces: 4.0.10 against a \
+pinned 4.0.7 warns and builds. Blank means the derivations were collected - \
+could not look, not agreed.<br><br>\
 Versions matching matters because both halves compile the same QML. A \
 mismatch produces errors about generated code, which read as a bug in \
 qml/ rather than a toolchain pairing."
@@ -225,7 +229,11 @@ qml/ rather than a toolchain pairing."
                         { label: "host tools", value: root.val("qt-wasm", "host_env"),
                           source: "QT_HOST_PATH - generators that run natively, not in wasm" },
                         { label: "emcc wanted", value: root.val("qt-wasm", "emcc_recommended"),
-                          source: "pinned by this Qt; see ~/Projects/qt6-wasm" }
+                          source: "pinned by this Qt; see ~/Projects/qt6-wasm" },
+                        { label: "emcc used", value: root.val("qt-wasm", "emcc_built_with"),
+                          source: "what the wasm Qt was built with, from its derivation" },
+                        { label: "same series", value: root.val("qt-wasm", "emcc_series_match"),
+                          source: "major.minor - what Qt actually enforces" }
                     ]
                 }
             }

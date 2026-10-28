@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::time::UNIX_EPOCH;
 
 use anyhow::Result;
@@ -116,6 +117,86 @@ fn emcc_recommended(qt6_cmake_dir: &Path) -> Option<String> {
     None
 }
 
+/// The Emscripten the wasm Qt was ACTUALLY built against, from the store graph.
+///
+/// This is the half the panel could not previously see. `emcc_recommended` is
+/// what Qt asks for; this is what it got, and the pair is the only thing worth
+/// comparing.
+///
+/// Read from Nix's own record rather than from PATH, which was the obvious
+/// approach and the wrong one. There is no emcc on this machine's PATH at
+/// all (the emsdk lives in `~/Projects/qt6-wasm`'s dev shell), so a PATH
+/// probe reports either nothing or some unrelated system emcc. That second
+/// case is
+/// exactly the false alarm `rust-emscripten-target` was fixed for: a toolchain
+/// the build never uses, reported as the toolchain the build uses.
+///
+/// The derivation names it. `<sdk>.drv` pulls in `qtbase-wasm-*.drv`, which
+/// pulls in `emscripten-<version>.drv`, so two bounded lookups find it. Only
+/// `-wasm-` inputs are followed, which keeps this to a handful of queries on a
+/// 30s interval.
+///
+/// Returns None when the derivations have been garbage collected - the store
+/// path outlives its .drv. That is "could not look", not "they disagree", and
+/// the panel must render it as such.
+fn emcc_built_with(sdk: &str) -> Option<String> {
+    fn query(args: &[&str]) -> Vec<String> {
+        let Ok(out) = Command::new("nix-store").args(args).output() else {
+            return Vec::new();
+        };
+        if !out.status.success() {
+            return Vec::new();
+        }
+        String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .map(|l| l.trim().to_string())
+            .filter(|l| !l.is_empty())
+            .collect()
+    }
+
+    /// `/nix/store/<hash>-emscripten-4.0.10.drv` -> `4.0.10`.
+    fn emscripten_version(path: &str) -> Option<String> {
+        let name = path.rsplit('/').next()?;
+        let rest = name.strip_prefix(|_c: char| true).and(Some(name))?;
+        let idx = rest.find("-emscripten-")?;
+        let v = &rest[idx + "-emscripten-".len()..];
+        let v = v.strip_suffix(".drv").unwrap_or(v);
+        v.chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_digit())
+            .then(|| v.to_string())
+    }
+
+    let drv = query(&["-q", "--deriver", sdk]).into_iter().next()?;
+    let inputs = query(&["-q", "--references", &drv]);
+    if let Some(v) = inputs.iter().find_map(|p| emscripten_version(p)) {
+        return Some(v);
+    }
+    // One level deeper, through the cross-compiled Qt modules only.
+    inputs
+        .iter()
+        .filter(|p| p.contains("-wasm-"))
+        .find_map(|p| {
+            query(&["-q", "--references", p])
+                .iter()
+                .find_map(|q| emscripten_version(q))
+        })
+}
+
+/// Do two Emscripten versions agree closely enough for Qt?
+///
+/// On major.minor, not exactly. qt.md records the measurement: 4.0.10 against
+/// a pinned 4.0.7 produces a warning and builds; a different major does not.
+/// Comparing exact strings would paint a working pairing as broken, which is
+/// the failure this panel exists to avoid.
+fn emcc_series_match(wanted: &str, got: &str) -> bool {
+    fn series(v: &str) -> (&str, &str) {
+        let mut it = v.split('.');
+        (it.next().unwrap_or(""), it.next().unwrap_or(""))
+    }
+    series(wanted) == series(got)
+}
+
 /// Qt version of the installed desktop app, for comparison.
 fn desktop_qt_version() -> Option<String> {
     let app = ui_candidates().into_iter().find(|p| p.exists())?;
@@ -148,6 +229,11 @@ struct WasmReading {
     versions_match: Option<bool>,
     /// Emscripten version this Qt expects.
     emcc_recommended: Option<String>,
+    /// Emscripten version it was actually built against, from the store graph.
+    emcc_built_with: Option<String>,
+    /// Whether those two agree on major.minor. None means one of them is
+    /// unknown - never rendered as agreement.
+    emcc_series_match: Option<bool>,
 }
 
 /// The bundle that is actually SERVED, not the one being linked.
@@ -400,6 +486,44 @@ for WebAssembly</a> &middot; \
                     },
                 },
                 StatInfo {
+                    key: "emcc_built_with",
+                    info: Info {
+                        what: "The Emscripten this Qt was actually compiled \
+                               with, read from the derivation that built it.",
+                        why: "This is the other half of the pairing, and \
+                              until it existed the panel could state what Qt \
+                              wanted and nothing more. Nix records which \
+                              Emscripten went into the wasm Qt, so the \
+                              question is answerable without guessing.",
+                        if_wrong: "Blank means the derivations were garbage \
+                                   collected - a store path outlives its \
+                                   .drv. That is 'could not look', not 'they \
+                                   agree'. It is NOT read from PATH, \
+                                   deliberately: there is no emcc there, and \
+                                   an unrelated system one would be a false \
+                                   alarm about a toolchain no build uses.",
+                        sections: &[],
+                    },
+                },
+                StatInfo {
+                    key: "emcc_series_match",
+                    info: Info {
+                        what: "Whether the Emscripten Qt asked for and the \
+                               one it got agree on major.minor.",
+                        why: "Compared on the series rather than exactly, \
+                              because that is what Qt enforces: 4.0.10 \
+                              against a pinned 4.0.7 warns and builds. An \
+                              exact comparison would call a working pairing \
+                              broken.",
+                        if_wrong: "Blank whenever either version is unknown, \
+                                   never 'yes'. A no means a different major \
+                                   or minor, which surfaces later as link \
+                                   errors naming a symbol rather than a \
+                                   toolchain.",
+                        sections: &[],
+                    },
+                },
+                StatInfo {
                     key: "wasm_bytes",
                     info: Info {
                         what: "Size of the compiled .wasm.",
@@ -487,6 +611,8 @@ came from the store, and the staleness answer should not be trusted.",
                 desktop_version: None,
                 versions_match: None,
                 emcc_recommended: None,
+                emcc_built_with: None,
+                emcc_series_match: None,
             })?);
         };
 
@@ -533,6 +659,12 @@ came from the store, and the staleness answer should not be trusted.",
             .as_deref()
             .and_then(|d| emcc_recommended(Path::new(d)));
 
+        let emcc_built_with = sdk.as_deref().and_then(emcc_built_with);
+        let emcc_series_match = match (&emcc_recommended, &emcc_built_with) {
+            (Some(w), Some(g)) => Some(emcc_series_match(w, g)),
+            _ => None,
+        };
+
         let desktop_version = desktop_qt_version();
         let versions_match = match (&sdk_version, &desktop_version) {
             (Some(a), Some(b)) => Some(a == b),
@@ -554,6 +686,8 @@ came from the store, and the staleness answer should not be trusted.",
             desktop_version,
             versions_match,
             emcc_recommended,
+            emcc_built_with,
+            emcc_series_match,
         })?)
     }
 
