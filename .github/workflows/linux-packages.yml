@@ -32,6 +32,11 @@
 # failure mode worth catching here rather than in an issue report.
 name: linux-packages
 
+# For the release-asset upload at the end of each job; everything else here
+# only needs the default read access.
+permissions:
+  contents: write
+
 on:
   push:
     tags: ["v*"]
@@ -45,9 +50,9 @@ jobs:
       matrix:
         include:
           - image: debian:12
-            suffix: deb12
+            suffix: debian12
           - image: debian:13
-            suffix: deb13
+            suffix: debian13
     container: ${{ matrix.image }}
     steps:
       # Before checkout: actions/checkout needs git, and the container has none.
@@ -81,9 +86,19 @@ jobs:
           cargo install cargo-deb --locked
           # --no-build: both binaries are already built above, and cargo-deb
           # would otherwise build only the UI crate it was pointed at.
-          cargo deb -p nixdash-ui --no-build
+          # --variant caps the Qt dependency at this build's minor, so
+          # installing it on the wrong Qt line is refused by apt rather than
+          # misbehaving at runtime. See ui/Cargo.toml.
+          cargo deb -p nixdash-ui --no-build --variant ${{ matrix.suffix }}
           dpkg-deb --info target/debian/*.deb
           dpkg-deb --contents target/debian/*.deb
+          # Self-describing filename: the two .deb files are not
+          # interchangeable, so the user must be able to tell them apart from
+          # the download page alone.
+          for f in target/debian/*.deb; do
+            mv "$f" "target/debian/nixdash_${GITHUB_REF_NAME#v}_${{ matrix.suffix }}_amd64.deb"
+          done
+          ls -la target/debian/
 
       # apt, not dpkg -i: apt resolves the dependencies, so a QML module named
       # wrongly in ui/Cargo.toml fails here instead of at first launch.
@@ -134,6 +149,16 @@ jobs:
           path: target/debian/*.deb
           if-no-files-found: error
 
+      # Actions artifacts are only downloadable by a logged-in GitHub user and
+      # they expire. A release asset is a plain public URL, which is the whole
+      # point of building these.
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: target/debian/*.deb
+          fail_on_unmatched_files: true
+
   rpm:
     runs-on: ubuntu-latest
     container: fedora:41
@@ -169,6 +194,9 @@ jobs:
           cargo generate-rpm -p ui
           rpm -qip target/generate-rpm/*.rpm
           rpm -qlp target/generate-rpm/*.rpm
+          for f in target/generate-rpm/*.rpm; do
+            mv "$f" "target/generate-rpm/nixdash-${GITHUB_REF_NAME#v}-fedora41.x86_64.rpm"
+          done
 
       - name: Install it, and check the engine runs
         run: |
@@ -200,3 +228,10 @@ jobs:
           name: nixdash-rpm
           path: target/generate-rpm/*.rpm
           if-no-files-found: error
+
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: target/generate-rpm/*.rpm
+          fail_on_unmatched_files: true

@@ -93,6 +93,37 @@ would otherwise be the only thing that mattered.
 The engine has none of those tags, because `nix/engine.nix` keeps it
 Qt-free — which is also why it is the half that cross-compiles to Windows.
 
+### Taking the wrong file is refused, not tolerated
+
+The version tags give no protection by themselves: `Qt_6_PRIVATE_API` is
+provided by every Qt 6, and the versioned tags are forward-compatible, so a
+6.4-built binary satisfies a 6.8 system. `dpkg-shlibdeps` likewise produces
+only a *lower* bound (`libqt6qml6 >= 6.4.2`). Left at that, a user who
+downloads the wrong `.deb` gets a successful install and a broken window.
+
+So each build caps the upper bound too:
+
+- **Debian** — `cargo deb --variant debian12` (or `debian13`) adds
+  `libqt6qml6 (<< 6.5)` / `(<< 6.9)`. `libQt6Qml` is the library whose
+  private API the UI links, so capping it is the targeted fix.
+- **Fedora** — an rpm *rich* dependency,
+  `(qt6-qtdeclarative >= 6.8 with qt6-qtdeclarative < 6.9)`. A plain map
+  cannot express a range, TOML having no duplicate keys, and putting rpm's
+  boolean syntax in the dependency name is the way round it.
+
+Both were tested. Installing the `debian:12` package on Debian 13 is refused:
+
+```
+Unable to satisfy dependencies. Reached two conflicting decisions:
+ 1. nixdash:amd64=0.1.0-1 is selected for install
+ 2. nixdash:amd64 Depends libqt6qml6 (< 6.5)
+    but none of the choices are installable
+```
+
+and the Fedora rich dependency resolves cleanly against Fedora 41's 6.8.3.
+A wrong download now costs the user one legible error instead of an
+afternoon.
+
 Containers rather than runner images, because the glibc floor is the single
 most important property of these artifacts and a container tag pins it, where
 `ubuntu-22.04` is retired on GitHub's schedule, not ours.

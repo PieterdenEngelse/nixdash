@@ -86,9 +86,34 @@ license = "MIT OR Apache-2.0"
 # is the first thing that ever executes it.
 auto-req = "auto"
 
+# An rpm RICH dependency, so the Qt requirement has an upper bound as well as
+# a lower one - the same install-time refusal the deb variants give. A plain
+# map cannot express a range, since TOML has no duplicate keys, and rpm's
+# boolean syntax in the dependency NAME is the way round that.
 [package.metadata.generate-rpm.requires]
-qt6-qtdeclarative = "*"
+"(qt6-qtdeclarative >= 6.8 with qt6-qtdeclarative < 6.9)" = "*"
 qt6-qtsvg = "*"
+
+# One variant per Qt minor, selected by `cargo deb --variant debian12`.
+#
+# These exist to turn a runtime failure into an install-time refusal. cxx-qt
+# links Qt's private API, so a package built against 6.4.2 is only safe on the
+# 6.4 line - but nothing stops a user installing it on 6.8, because
+# Qt_6_PRIVATE_API is an unversioned tag that every Qt 6 provides and the
+# versioned tags are forward-compatible. dpkg-shlibdeps gives a LOWER bound
+# (libqt6qml6 >= 6.4.2) and no upper one, so apt sees nothing to object to and
+# the user gets a window that misbehaves instead of a clear error.
+#
+# Capping libqt6qml6 is enough and is the targeted fix: libQt6Qml is the
+# library whose private API the UI actually links against.
+#
+# The whole depends string is restated because a variant replaces the field
+# rather than appending to it; keep these in step with the base above.
+[package.metadata.deb.variants.debian12]
+depends = "$auto, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-layouts, qml6-module-qtquick-templates, qml6-module-qtquick-window, libqt6qml6 (<< 6.5)"
+
+[package.metadata.deb.variants.debian13]
+depends = "$auto, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-layouts, qml6-module-qtquick-templates, qml6-module-qtquick-window, libqt6qml6 (<< 6.9)"
 
 [[package.metadata.generate-rpm.assets]]
 source = "target/release/nixdash-ui"

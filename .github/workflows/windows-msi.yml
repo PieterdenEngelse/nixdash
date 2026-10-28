@@ -10,6 +10,10 @@
 # .wxs it rejects a plainly relative Directory/@Name. Verified 2026-10-28.
 name: windows-msi
 
+# For the release-asset upload at the end; nothing else here needs write.
+permissions:
+  contents: write
+
 on:
   push:
     tags: ["v*"]
@@ -115,3 +119,12 @@ jobs:
           name: nixdash-msi
           path: "*.msi"
           if-no-files-found: error
+
+      # Actions artifacts need a logged-in GitHub account to download and
+      # they expire; a release asset is a plain public URL.
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: "*.msi"
+          fail_on_unmatched_files: true

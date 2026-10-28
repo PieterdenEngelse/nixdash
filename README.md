@@ -224,39 +224,61 @@ nix run .#ui         # desktop UI
 
 ### On a machine without Nix
 
-Native packages, built by CI — see
-[packaging/linux/README.md](packaging/linux/README.md) and
-[packaging/wix/README.md](packaging/wix/README.md).
+Download from the [latest release](https://github.com/PieterdenEngelse/nixdash/releases/latest):
 
-| | Built in | Qt | glibc | Runs on |
-|---|---|---|---|---|
-| `.deb` | `debian:12` | 6.4.2 | 2.36 | Debian 12, Ubuntu 24.04 |
-| `.deb` | `debian:13` | 6.8 | 2.41 | Debian 13 |
-| `.rpm` | `fedora:41` | 6.8 | 2.40 | Fedora 41 |
-| `.msi` | `windows-latest` | 6.11.2 | — | Windows 10+ |
+| Your system | File | Install |
+|---|---|---|
+| Debian 12, Ubuntu 24.04 | `nixdash_*_debian12_amd64.deb` | `sudo apt install ./nixdash_*.deb` |
+| Debian 13 | `nixdash_*_debian13_amd64.deb` | `sudo apt install ./nixdash_*.deb` |
+| Fedora 41 | `nixdash-*-fedora41.x86_64.rpm` | `sudo dnf install ./nixdash-*.rpm` |
+| Windows 10+ | `nixdash-*-x64.msi` | double-click |
 
-One build per Qt **minor**, not per glibc floor: cxx-qt links Qt's private
-API, so a package is only safe on the Qt line it was built against. See
-[packaging/linux/README.md](packaging/linux/README.md).
+Then open **nixdash** from the application menu. That is the whole install —
+the engine starts with the window and stops with it.
 
-None of them can be built on a NixOS machine. A native package cannot
-reference `/nix/store`, and a build here links against Qt and glibc 2.42 that
-no distribution ships; the Windows UI has no cross path at all, because
-`pkgsCross.mingwW64.qt6` is unsupported. The engine alone does cross-compile:
+Two things worth knowing, and nothing else:
+
+- **Took the wrong Linux file?** `apt` and `dnf` refuse it, with a message
+  naming the Qt version, rather than installing something that opens a broken
+  window. There is one build per Qt release line because cxx-qt links Qt's
+  private API — [the detail](packaging/linux/README.md), if you want it.
+- **Windows says the publisher is unknown.** The MSI is unsigned. *More info
+  → Run anyway*. It installs per-user, so it never asks for an administrator.
+
+To keep the engine running in the background from login instead, so it is
+collecting before you open the window:
+
+```sh
+systemctl --user enable --now nixdash-engine
+```
+
+That is the same shape as the home-manager module above, and the window
+notices it is already there rather than starting a second one.
+
+On any of these the NixOS panels report *could not look* rather than inventing
+a reading: there is no `/etc/nixos` to read. The Qt and Rust panels, which ask
+whether a build would work in this environment, are the ones that still
+answer.
+
+#### Building them
+
+Not on a NixOS machine, and that is not a limitation of the setup. A native
+package cannot reference `/nix/store`, and a build here links against Qt and
+glibc 2.42 that no distribution ships; the Windows UI has no cross path at
+all, because `pkgsCross.mingwW64.qt6` is unsupported. Each package is built
+inside the system it targets by
+[CI](.github/workflows/linux-packages.yml). The engine alone cross-compiles:
 
 ```sh
 just engine-windows   # nixdash-engine.exe, the engine half of the MSI
 ```
 
-The Linux packages install the engine as a systemd **user** unit, which is the
-same shape as the home-manager module above. It is not enabled on install —
-until you run `systemctl --user enable --now nixdash-engine`, the menu entry
-starts its own engine and stops it with the window.
-
-On any of them the NixOS panels report *could not look* rather than inventing
-a reading: there is no `/etc/nixos` to read. The Qt and Rust panels, which ask
-whether a build would work in this environment, are the ones that still
-answer.
+| | Built in | Qt | glibc |
+|---|---|---|---|
+| `.deb` | `debian:12` | 6.4.2 | 2.36 |
+| `.deb` | `debian:13` | 6.8.2 | 2.41 |
+| `.rpm` | `fedora:41` | 6.8.3 | 2.40 |
+| `.msi` | `windows-latest` | 6.11.2 | — |
 
 ## After installing
 
