@@ -108,7 +108,24 @@ jobs:
           # without opening the log, which is also the only way to read why a
           # job failed without an authenticated token on a public repo - the
           # logs endpoint is 403 anonymously. Newlines must be %0A encoded.
-          ann() { printf '::error title=%s::%s\n' "$1" "${2//$'\n'/%0A}"; }
+          # Two annotations, and the sanitising, both exist because the
+          # fourth run failed with no annotation at all: the engine's log
+          # carries ANSI colour escapes, and an escape inside a workflow
+          # command makes GitHub drop the whole line - so the message was
+          # emitted and silently discarded. The bare one can always be
+          # parsed; the second carries the detail.
+          #
+          # % must be encoded before the newlines are, or the %0A introduced
+          # here would itself be re-encoded to %250A.
+          ann() {
+            local title=$1 body=$2
+            printf '::error::%s\n' "$title"
+            body=$(printf '%s' "$body" | sed -e 's/\x1b\[[0-9;]*[a-zA-Z]//g')
+            body=${body//'%'/%25}
+            body=${body//$'\r'/%0D}
+            body=${body//$'\n'/%0A}
+            printf '::error title=%s::%s\n' "$title" "$body"
+          }
           run() {
             local out
             if ! out=$("$@" 2>&1); then ann "$1" "$out"; exit 1; fi
@@ -128,7 +145,7 @@ jobs:
           run test -f /usr/share/applications/nixdash.desktop
           run desktop-file-validate /usr/share/applications/nixdash.desktop
 
-          NIXDASH_PORT=3100 /usr/bin/nixdash-engine >engine.log 2>&1 &
+          NO_COLOR=1 NIXDASH_PORT=3100 /usr/bin/nixdash-engine >engine.log 2>&1 &
           for i in $(seq 1 40); do
             curl -sf http://127.0.0.1:3100/health >/dev/null && break || sleep 0.5
           done
@@ -232,7 +249,24 @@ jobs:
           # without opening the log, which is also the only way to read why a
           # job failed without an authenticated token on a public repo - the
           # logs endpoint is 403 anonymously. Newlines must be %0A encoded.
-          ann() { printf '::error title=%s::%s\n' "$1" "${2//$'\n'/%0A}"; }
+          # Two annotations, and the sanitising, both exist because the
+          # fourth run failed with no annotation at all: the engine's log
+          # carries ANSI colour escapes, and an escape inside a workflow
+          # command makes GitHub drop the whole line - so the message was
+          # emitted and silently discarded. The bare one can always be
+          # parsed; the second carries the detail.
+          #
+          # % must be encoded before the newlines are, or the %0A introduced
+          # here would itself be re-encoded to %250A.
+          ann() {
+            local title=$1 body=$2
+            printf '::error::%s\n' "$title"
+            body=$(printf '%s' "$body" | sed -e 's/\x1b\[[0-9;]*[a-zA-Z]//g')
+            body=${body//'%'/%25}
+            body=${body//$'\r'/%0D}
+            body=${body//$'\n'/%0A}
+            printf '::error title=%s::%s\n' "$title" "$body"
+          }
           run() {
             local out
             if ! out=$("$@" 2>&1); then ann "$1" "$out"; exit 1; fi
@@ -250,7 +284,7 @@ jobs:
           run test -x /usr/bin/nixdash-ui
           run test -f /usr/lib/systemd/user/nixdash-engine.service
 
-          NIXDASH_PORT=3100 /usr/bin/nixdash-engine >engine.log 2>&1 &
+          NO_COLOR=1 NIXDASH_PORT=3100 /usr/bin/nixdash-engine >engine.log 2>&1 &
           for i in $(seq 1 40); do
             curl -sf http://127.0.0.1:3100/health >/dev/null && break || sleep 0.5
           done
