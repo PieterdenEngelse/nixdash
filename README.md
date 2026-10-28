@@ -283,7 +283,7 @@ just engine-windows   # nixdash-engine.exe, the engine half of the MSI
 | `.deb` | `debian:12` | 6.4.2 | 2.36 |
 | `.deb` | `debian:13` | 6.8.2 | 2.41 |
 | `.rpm` | `fedora:41` | 6.8.3 | 2.40 |
-| `.msi` | `windows-latest` | 6.11.2 | — |
+| `.msi` | `windows-latest` | 6.8.3 | — |
 
 ## After installing
 

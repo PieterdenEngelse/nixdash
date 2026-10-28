@@ -62,7 +62,7 @@ jobs:
           apt-get install -y --no-install-recommends \
             ca-certificates curl git build-essential pkg-config \
             qt6-base-dev qt6-declarative-dev qt6-svg-dev qt6-shadertools-dev \
-            libgl1-mesa-dev
+            libgl1-mesa-dev desktop-file-utils
 
       - uses: actions/checkout@v4
 
@@ -104,16 +104,31 @@ jobs:
       # wrongly in ui/Cargo.toml fails here instead of at first launch.
       - name: Install it, and check the engine runs
         run: |
-          apt-get install -y ./target/debian/*.deb
-          test -x /usr/bin/nixdash-ui
-          test -f /usr/lib/systemd/user/nixdash-engine.service
-          test -f /usr/share/applications/nixdash.desktop
-          desktop-file-validate /usr/share/applications/nixdash.desktop
-          NIXDASH_PORT=3100 /usr/bin/nixdash-engine &
+          # Surface failures as annotations. They appear on the run summary
+          # without opening the log, which is also the only way to read why a
+          # job failed without an authenticated token on a public repo - the
+          # logs endpoint is 403 anonymously. Newlines must be %0A encoded.
+          ann() { printf '::error title=%s::%s\n' "$1" "${2//$'\n'/%0A}"; }
+          run() {
+            local out
+            if ! out=$("$@" 2>&1); then ann "$1" "$out"; exit 1; fi
+            printf '%s\n' "$out"
+          }
+
+          run apt-get install -y ./target/debian/*.deb
+          run test -x /usr/bin/nixdash-ui
+          run test -f /usr/lib/systemd/user/nixdash-engine.service
+          run test -f /usr/share/applications/nixdash.desktop
+          run desktop-file-validate /usr/share/applications/nixdash.desktop
+
+          NIXDASH_PORT=3100 /usr/bin/nixdash-engine >engine.log 2>&1 &
           for i in $(seq 1 40); do
-            curl -sf http://127.0.0.1:3100/health && break || sleep 0.5
+            curl -sf http://127.0.0.1:3100/health >/dev/null && break || sleep 0.5
           done
-          curl -sf http://127.0.0.1:3100/health
+          if ! curl -sf http://127.0.0.1:3100/health; then
+            ann 'the installed engine never answered on 3100' "$(cat engine.log)"
+            exit 1
+          fi
           kill %1
 
       # The one test that cannot be run on the development machine at all:
@@ -200,14 +215,29 @@ jobs:
 
       - name: Install it, and check the engine runs
         run: |
-          dnf install -y ./target/generate-rpm/*.rpm
-          test -x /usr/bin/nixdash-ui
-          test -f /usr/lib/systemd/user/nixdash-engine.service
-          NIXDASH_PORT=3100 /usr/bin/nixdash-engine &
+          # Surface failures as annotations. They appear on the run summary
+          # without opening the log, which is also the only way to read why a
+          # job failed without an authenticated token on a public repo - the
+          # logs endpoint is 403 anonymously. Newlines must be %0A encoded.
+          ann() { printf '::error title=%s::%s\n' "$1" "${2//$'\n'/%0A}"; }
+          run() {
+            local out
+            if ! out=$("$@" 2>&1); then ann "$1" "$out"; exit 1; fi
+            printf '%s\n' "$out"
+          }
+
+          run dnf install -y ./target/generate-rpm/*.rpm
+          run test -x /usr/bin/nixdash-ui
+          run test -f /usr/lib/systemd/user/nixdash-engine.service
+
+          NIXDASH_PORT=3100 /usr/bin/nixdash-engine >engine.log 2>&1 &
           for i in $(seq 1 40); do
-            curl -sf http://127.0.0.1:3100/health && break || sleep 0.5
+            curl -sf http://127.0.0.1:3100/health >/dev/null && break || sleep 0.5
           done
-          curl -sf http://127.0.0.1:3100/health
+          if ! curl -sf http://127.0.0.1:3100/health; then
+            ann 'the installed engine never answered on 3100' "$(cat engine.log)"
+            exit 1
+          fi
           kill %1
 
       # See the long note on the equivalent step in the deb job.

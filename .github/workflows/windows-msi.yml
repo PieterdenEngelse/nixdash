@@ -33,9 +33,27 @@ jobs:
         with:
           targets: x86_64-pc-windows-msvc
 
+      # 6.8.3 (LTS), NOT the 6.11.2 this project develops against, and the
+      # reason is a Qt repository change rather than a preference.
+      #
+      # Qt reorganised its online repository at 6.11: metadata moved from
+      # .../qt6_6112/qt6_6112/Updates.xml to a per-architecture
+      # .../qt6_6112/qt6_6112_msvc2022_64/Updates.xml. aqtinstall, which this
+      # action drives, still looks for the nested form, so every 6.11 install
+      # dies with "Failed to download checksum for the file 'Updates.xml'".
+      # There is nothing to upgrade to: 3.3.0 is the latest aqtinstall release
+      # and it is the one that fails. Measured 2026-10-28 - the nested path is
+      # 200 for 6.8.3, 6.9.2 and 6.10.3, and 404 from 6.11.0 on.
+      #
+      # Only the version was wrong: `aqt list-qt windows desktop --arch 6.8.3`
+      # confirms win64_msvc2022_64, and qtshadertools is in its module list.
+      #
+      # The UI being built against a different Qt minor than the NixOS build
+      # is harmless - each platform's package is self-contained, which is the
+      # same reason the .deb and .rpm are built per Qt line.
       - uses: jurplel/install-qt-action@v4
         with:
-          version: 6.11.2
+          version: 6.8.3
           arch: win64_msvc2022_64
           # qtdeclarative, qtsvg and qtshadertools are what nix/ui.nix pulls
           # in; keep this list and that one in step.
