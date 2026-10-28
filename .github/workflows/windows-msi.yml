@@ -59,6 +59,10 @@ jobs:
           # in; keep this list and that one in step.
           modules: qtshadertools
 
+      # Each pwsh step below reports its own failure as an annotation, for the
+      # same reason the Linux jobs do: an annotation shows on the run summary
+      # without opening the log, and the logs endpoint is 403 without a token
+      # even on a public repository.
       - name: Build engine and UI
         shell: pwsh
         env:
@@ -67,8 +71,15 @@ jobs:
           # this needs none of the qt6.env machinery nix/ui.nix documents.
           CXXQT_QMAKE: ${{ env.QT_ROOT_DIR }}\bin\qmake.exe
         run: |
-          cargo build --release -p nixdash-engine
-          cargo build --release -p nixdash-ui
+          function Fail($title, $text) {
+            $t = (($text | Out-String) -replace "`r", '') -replace "`n", '%0A'
+            Write-Output "::error title=$title::$t"
+            exit 1
+          }
+          $log = cargo build --release -p nixdash-engine 2>&1
+          if ($LASTEXITCODE -ne 0) { Fail 'cargo build nixdash-engine' ($log | Select-Object -Last 30) }
+          $log = cargo build --release -p nixdash-ui 2>&1
+          if ($LASTEXITCODE -ne 0) { Fail 'cargo build nixdash-ui' ($log | Select-Object -Last 40) }
 
       # windeployqt is what turns two .exe files into a payload: it walks the
       # UI's imports and copies the Qt DLLs, the platform and style plugins,
@@ -80,7 +91,13 @@ jobs:
           Copy-Item target\release\nixdash-ui.exe     stage\
           Copy-Item target\release\nixdash-engine.exe stage\
           Copy-Item assets\nixdash.ico                stage\
-          & "$env:QT_ROOT_DIR\bin\windeployqt.exe" --qmldir qml --release stage\nixdash-ui.exe
+          $log = & "$env:QT_ROOT_DIR\bin\windeployqt.exe" --qmldir qml --release stage\nixdash-ui.exe 2>&1
+          if ($LASTEXITCODE -ne 0) {
+            $t = (($log | Out-String) -replace "`r", '') -replace "`n", '%0A'
+            Write-Output "::error title=windeployqt::$t"
+            exit 1
+          }
+          $log | Write-Output
 
       # Fail loudly rather than shipping an MSI whose shortcut points at a
       # UI that cannot start. A missing Qt6Qml.dll here means windeployqt
@@ -88,10 +105,17 @@ jobs:
       - name: Check the payload is complete
         shell: pwsh
         run: |
-          foreach ($f in @('nixdash-ui.exe','nixdash-engine.exe','Qt6Core.dll','Qt6Qml.dll')) {
-            if (-not (Test-Path "stage\$f")) { throw "payload missing $f" }
+          $missing = @()
+          foreach ($f in @('nixdash-ui.exe','nixdash-engine.exe','Qt6Core.dll','Qt6Qml.dll','platforms\qwindows.dll')) {
+            if (-not (Test-Path "stage\$f")) { $missing += $f }
           }
-          if (-not (Test-Path 'stage\platforms\qwindows.dll')) { throw 'payload missing the windows platform plugin' }
+          if ($missing.Count -gt 0) {
+            # List what IS there, since "Qt6Qml.dll missing" usually means
+            # windeployqt found no QML imports rather than that Qt is broken.
+            $have = (Get-ChildItem -Recurse -Name stage | Out-String) -replace "`r", ''
+            Write-Output "::error title=payload incomplete::missing: $($missing -join ', ')%0A%0Astaged:%0A$($have -replace "`n", '%0A')"
+            exit 1
+          }
 
       - name: Build the MSI
         shell: pwsh

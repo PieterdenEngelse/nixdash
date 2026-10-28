@@ -1,0 +1,22 @@
+#!/bin/sh
+# rpm's find-requires, minus sonames that no Fedora package provides.
+#
+# Qt6Network's libproxy integration leaves a DT_NEEDED on
+# libpxbackend-1.0.so. libproxy ships that file in /usr/lib64/libproxy/ - a
+# private plugin directory, not a linker path - so rpm generates no soname
+# provide for it, while find-requires still turns our binary's DT_NEEDED into
+# a requirement. The result is an rpm that cannot be installed at all:
+#
+#   nothing provides libpxbackend-1.0.so()(64bit) needed by nixdash
+#
+# Verified on Fedora 41: libproxy-0.5.8 owns /usr/lib64/libproxy/libpxbackend-1.0.so,
+# and `dnf provides "libpxbackend-1.0.so()(64bit)"` finds nothing.
+#
+# Filtering one soname rather than turning auto-req off: every other
+# dependency - the whole libQt6* set, glibc's symbol versions - is still
+# derived automatically, which is the reason there is no Qt dependency list
+# to maintain by hand.
+#
+# sed, not grep -v: grep exits 1 when it selects no lines, which would look
+# like a failure to cargo-generate-rpm on a package with no requirements.
+/usr/lib/rpm/find-requires | sed '/^libpxbackend-/d'

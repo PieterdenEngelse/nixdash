@@ -206,7 +206,13 @@ jobs:
           # of symbols. Measured on the .deb: 4.58 MB -> 3.49 MB for the
           # engine, 3.60 MB -> 2.77 MB for the UI.
           strip target/release/nixdash-engine target/release/nixdash-ui
-          cargo generate-rpm -p ui
+          # --auto-req overrides the "auto" in ui/Cargo.toml with a filtered
+          # find-requires; see packaging/linux/find-requires-filtered for the
+          # one soname it drops and why the rpm is uninstallable without it.
+          # Kept on the command line rather than in the manifest so that
+          # generating an rpm on a non-Fedora machine, which has no
+          # /usr/lib/rpm/find-requires, still works for checking the layout.
+          cargo generate-rpm -p ui --auto-req ./packaging/linux/find-requires-filtered
           rpm -qip target/generate-rpm/*.rpm
           rpm -qlp target/generate-rpm/*.rpm
           for f in target/generate-rpm/*.rpm; do
