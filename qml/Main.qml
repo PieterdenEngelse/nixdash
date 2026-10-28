@@ -30,6 +30,17 @@ ApplicationWindow {
     // Style.qml.
     Style { id: style }
 
+    /// Reach the palette through this inside a Text or a Label.
+    ///
+    /// Both derive from QQuickText, which carries its OWN `style` property -
+    /// the Normal/Outline/Raised enum - and it shadows the id above. Written
+    /// inside one, `style.fontBody` resolves to that enum, yields undefined,
+    /// and the binding silently keeps its default instead of erroring.
+    /// TextEdit and TextInput have no such property, so SelectableText is
+    /// unaffected; this is only Text and Label. Enforced by
+    /// engine/tests/qml_text_style.rs, because nothing else catches it.
+    readonly property var theme: style
+
     // A dark scheme chosen outright, rather than inherited from the desktop.
     //
     // It used to read the system palette and then paint tiles with
@@ -334,7 +345,8 @@ ApplicationWindow {
     /// The topics under Dev > Qt. Each is a page of its own.
     readonly property var qtTopics: [
         { "id": "", "name": "Overview" },
-        { "id": "prefix", "name": "Why there is no single Qt" }
+        { "id": "prefix", "name": "Why there is no single Qt" },
+        { "id": "wasm", "name": "Two Qts, and the Emscripten between them" }
     ]
 
     /// A topic's display name, for the trail.
@@ -833,7 +845,8 @@ a trip to Monitor and back."
                         Label {
                             text: "\u203a"
                             visible: root.subject !== ""
-                            font.pixelSize: style.fontBody
+                            // Not style.fontBody: inside a Label that is the enum.
+                            font.pixelSize: root.theme.fontBody
                         }
 
                         SelectableText {
@@ -857,7 +870,8 @@ a trip to Monitor and back."
                         Label {
                             text: "\u203a"
                             visible: root.topic !== ""
-                            font.pixelSize: style.fontBody
+                            // Not style.fontBody: inside a Label that is the enum.
+                            font.pixelSize: root.theme.fontBody
                         }
 
                         SelectableText {
@@ -1113,12 +1127,22 @@ window was told about.</li></ul>"
             return devPage
         if (root.topic === "prefix")
             return qtPrefixPage
+        if (root.topic === "wasm")
+            return qtWasmPage
         return devQtPage
     }
 
     Component {
         id: qtPrefixPage
         QtPrefixPage {
+            panels: root.panelsFor("qt")
+            apiBase: dash.apiBase
+        }
+    }
+
+    Component {
+        id: qtWasmPage
+        QtWasmPage {
             panels: root.panelsFor("qt")
             apiBase: dash.apiBase
         }

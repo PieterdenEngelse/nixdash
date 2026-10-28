@@ -6,14 +6,24 @@ Panel {
 
     Style { id: style }
 
-    /// Reach the palette through this inside a Text.
+    /// Reach the palette through this inside a Text or a Label.
     ///
-    /// Text and everything derived from it carry their OWN `style` property
-    /// - the Normal/Outline/Raised enum - and it shadows the id above. A
-    /// `style.textMuted` written inside a Text therefore resolves to a
+    /// Both are QQuickText, which carries its OWN `style` property - the
+    /// Normal/Outline/Raised enum - and it shadows the id above. A
+    /// `style.textMuted` written inside one therefore resolves to a
     /// QQuickText::TextStyle, yields undefined, and the colour silently
-    /// falls back instead of erroring. qml-check catches it; nothing else
-    /// does.
+    /// falls back instead of erroring. TextEdit and TextInput declare no such
+    /// property, so SelectableText is unaffected and its 113 reads of
+    /// `style.*` are correct: this is Text and Label, not everything
+    /// text-shaped.
+    ///
+    /// engine/tests/qml_text_style.rs is the only thing that catches it.
+    /// Neither qmllint nor `./qml-check` does - an earlier version of this
+    /// comment claimed qml-check did, and reintroducing the shadowed form
+    /// still reported clean. The app is no guard either, because the failure
+    /// renders rather than throws: these labels drew every frame, in the
+    /// right places, with the right times, in black on a #22272e panel, and
+    /// two more sat unnoticed in Main.qml's breadcrumb separators.
     readonly property var theme: style
 
     /// [{at, value}] oldest first, for the sparkline. `at` is milliseconds
