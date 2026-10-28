@@ -344,7 +344,7 @@ fn violations(name: &str, src: &str, shadowing: &HashSet<String>) -> Vec<String>
                  There `style` is the QQuickText enum, not the palette, so this \
                  yields undefined and the binding silently keeps its default. \
                  Write `root.theme.{}` instead.",
-                path.splitn(2, '.').nth(1).unwrap_or("")
+                path.split_once('.').map(|(_, rest)| rest).unwrap_or("")
             )
         })
         .collect()
