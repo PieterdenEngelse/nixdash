@@ -178,6 +178,9 @@ slower still.
 
 ## Installing
 
+On NixOS, the home-manager module below. On anything else, skip to
+[On a machine without Nix](#on-a-machine-without-nix).
+
 A home-manager module ships with the project:
 
 ```nix
@@ -197,16 +200,11 @@ then add it to the `imports` list in your `home.nix` and switch.
 It installs the engine and runs it as a **user** unit, installs the desktop UI
 with a menu entry, and optionally autostarts it.
 
-The unit used to be tightly sandboxed (`NoNewPrivileges`,
-`ProtectSystem=strict`, `RestrictNamespaces`, …). It is not any more, and that
-is a consequence of the Run button rather than an oversight: `pkexec` is
-setuid and execs its target **in place**, so every restriction on the unit
-also applies to `nixos-rebuild switch`. `NoNewPrivileges` stops pkexec
-escalating at all; `ProtectSystem=strict` makes `/nix/store` read-only so no
-build can finish; `RestrictNamespaces` removes the namespaces Nix sandboxes
-builds in. The settings that cost nothing (`LockPersonality`,
-`SystemCallArchitectures=native`) are still there; see the comment in
-`nix/hm-module.nix` for the full list and why each one went.
+The unit carries **no** sandboxing options — not even the two that look free,
+`LockPersonality` and `SystemCallArchitectures`, which are seccomp-based and
+so cannot be set in an unprivileged user unit without also setting
+`NoNewPrivileges`, which breaks `pkexec`. That is the price of the Run button,
+and `nix/hm-module.nix` holds the option-by-option reasoning.
 
 Options: `package`, `port`, `logLevel`, `autoStart`, `ui.enable`,
 `ui.package`, `ui.autostart`.
@@ -224,14 +222,21 @@ nix run .#ui         # desktop UI
 
 ### On a machine without Nix
 
-Download from the [latest release](https://github.com/PieterdenEngelse/nixdash/releases/latest):
+Take the file for your system from the
+[releases page](https://github.com/PieterdenEngelse/nixdash/releases) and run
+the one command next to it. If that page is empty, no release has been cut
+yet — see [Building them](#building-them) below.
 
-| Your system | File | Install |
-|---|---|---|
-| Debian 12, Ubuntu 24.04 | `nixdash_*_debian12_amd64.deb` | `sudo apt install ./nixdash_*.deb` |
-| Debian 13 | `nixdash_*_debian13_amd64.deb` | `sudo apt install ./nixdash_*.deb` |
-| Fedora 41 | `nixdash-*-fedora41.x86_64.rpm` | `sudo dnf install ./nixdash-*.rpm` |
-| Windows 10+ | `nixdash-*-x64.msi` | double-click |
+| Your system | Install |
+|---|---|
+| Debian 12, Ubuntu 24.04 | `sudo apt install ./nixdash_*_debian12_amd64.deb` |
+| Debian 13 | `sudo apt install ./nixdash_*_debian13_amd64.deb` |
+| Fedora 41 | `sudo dnf install ./nixdash-*-fedora41.x86_64.rpm` |
+| Windows 10+ | double-click `nixdash-*-x64.msi` |
+
+The distro is in each filename, and in the command, because downloading two
+of them to compare is the obvious thing to do and `./nixdash_*.deb` would
+then match both.
 
 Then open **nixdash** from the application menu. That is the whole install —
 the engine starts with the window and stops with it.
