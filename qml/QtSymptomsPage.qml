@@ -32,6 +32,16 @@ Item {
     /// A topic id from Main.qml's qtTopics; "" is the Qt overview.
     signal openTopic(string id)
 
+    /// Rows link with "overview", not with the overview's real id.
+    ///
+    /// Its id is the empty string, and an empty string is not a usable
+    /// href - `<a href=''>` is not reliably a link at all, so those rows
+    /// would simply render as dead text. The rows carry a sentinel and it
+    /// is translated here, which keeps the destinations on this page.
+    function topicFor(linkId) {
+        return linkId === "overview" ? "" : linkId
+    }
+
     function panel(id) {
         var m = panels.filter(function(p) { return p.id === id })
         return m.length > 0 ? m[0] : null
@@ -91,7 +101,7 @@ NixOS no single Qt prefix has everything."
 check which qmake answered - it is the first row on the Qt page, and a \
 runtime copy answering instead of your dev shell's is the usual reason a \
 correct fix appears not to work."
-                onLinkActivated: function(id) { root.openTopic(id) }
+                onLinkActivated: function(id) { root.openTopic(root.topicFor(id)) }
                 rows: [
                     { label: "builds, then fails at code generation",
                       value: "the prefix is missing qmltyperegistrar",
@@ -125,7 +135,7 @@ so the question behind most of these is <i>which half answered</i>."
 error and do not share its cause.</b> A missing prl path for <i>Gui</i> in a \
 wasm build is a relative qt.conf, not the setup hook; an undefined symbol at \
 link is the Emscripten pairing, not a missing library."
-                onLinkActivated: function(id) { root.openTopic(id) }
+                onLinkActivated: function(id) { root.openTopic(root.topicFor(id)) }
                 rows: [
                     { label: "Could NOT find Qt6Qml",
                       value: "qt.toolchain.cmake reset CMAKE_PREFIX_PATH",
@@ -173,16 +183,16 @@ has a string form, so it travels before it fails."
                 ifWrong: "A blank window with no output is almost always the \
 module URI or the resource lists. <tt>./qml-check</tt> finds binding \
 mistakes without running anything; it does <b>not</b> find these."
-                onLinkActivated: function(id) { root.openTopic(id) }
+                onLinkActivated: function(id) { root.openTopic(root.topicFor(id)) }
                 rows: [
                     { label: "a blank window, no error at all",
                       value: "the module URI disagrees in one of four places",
                       source: "or NIXDASH_QML_DIR, which redirects Main.qml alone",
-                      linkText: "the Qt overview →", linkId: "" },
+                      linkText: "the Qt overview →", linkId: "overview" },
                     { label: "No such file or directory, for a file that exists",
                       value: "a ../ path in qml_files ate the module name",
                       source: "the shared qml/ is reached by symlink, never by ..",
-                      linkText: "the Qt overview →", linkId: "" },
+                      linkText: "the Qt overview →", linkId: "overview" },
                     { label: "GET on a local file is disabled by default",
                       value: "a Rust api_base never became apiBase in QML",
                       source: "undefined stringified into the URL and made it a path",
