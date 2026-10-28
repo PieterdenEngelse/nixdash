@@ -21,6 +21,15 @@ import QtQuick.Layouts
 //
 // One row deliberately has no destination: `qResourceFeatureZstd`. Writing
 // this index is what found that, which is the argument for having it.
+//
+// Labels are the distinctive TOKEN of the error, not the whole line, and
+// that is a layout constraint as much as a reading one. ConfigSection sizes
+// its label column to the longest label plus two, in monospace characters -
+// so a 48-character label like "Qt module mismatch between cxx-qt-build and
+// CMake" produced a 50-character column, and at the window's restore width
+// of 820 the label and value columns wrapped into each other. Seen on
+// Xvfb; it reads fine maximised, which is how it got written. It also reads
+// better this way: you scan for the fragment you can see in your own error.
 Item {
     id: root
 
@@ -103,19 +112,19 @@ runtime copy answering instead of your dev shell's is the usual reason a \
 correct fix appears not to work."
                 onLinkActivated: function(id) { root.openTopic(root.topicFor(id)) }
                 rows: [
-                    { label: "builds, then fails at code generation",
-                      value: "the prefix is missing qmltyperegistrar",
+                    { label: "codegen fails",
+                      value: "builds a long way, then the prefix is missing qmltyperegistrar",
                       source: "tools absent here: " + root.val("qt", "tools_missing"),
                       linkText: "why there is no single Qt →", linkId: "prefix" },
-                    { label: "cannot find -lGLX",
-                      value: "libglvnd is not in buildInputs",
+                    { label: "-lGLX",
+                      value: "cannot find -lGLX: libglvnd is not in buildInputs",
                       source: "packages is not enough - only buildInputs reaches the linker",
                       linkText: "trap 2 →", linkId: "prefix" },
-                    { label: "no prl path for QuickControls2",
-                      value: "a setup hook re-exported QMAKE, under nix build only",
+                    { label: "no prl path",
+                      value: "QuickControls2: a setup hook re-exported QMAKE, under nix build only",
                       source: "never in the dev shell, which is why it appears at packaging time",
                       linkText: "trap 3 →", linkId: "prefix" },
-                    { label: "Qt module mismatch between cxx-qt-build and CMake",
+                    { label: "module mismatch",
                       value: "a .qt_module in build.rs with no Qt:: in CMake",
                       source: "the one error here that names what to do",
                       linkText: "QML meets Rust →", linkId: "rust" }
@@ -137,33 +146,33 @@ wasm build is a relative qt.conf, not the setup hook; an undefined symbol at \
 link is the Emscripten pairing, not a missing library."
                 onLinkActivated: function(id) { root.openTopic(root.topicFor(id)) }
                 rows: [
-                    { label: "Could NOT find Qt6Qml",
-                      value: "qt.toolchain.cmake reset CMAKE_PREFIX_PATH",
+                    { label: "Qt6Qml",
+                      value: "could NOT find it: qt.toolchain.cmake reset CMAKE_PREFIX_PATH",
                       source: "use QT_ADDITIONAL_PACKAGES_PREFIX_PATH, which survives it",
                       linkText: "blocker C →", linkId: "wasm" },
-                    { label: "__builtin_ia32_pause undeclared",
-                      value: "the HOST qmake answered a wasm build",
+                    { label: "ia32_pause",
+                      value: "undeclared identifier: the HOST qmake answered a wasm build",
                       source: "an x86 intrinsic, reached while compiling for WebAssembly",
                       linkText: "blocker A →", linkId: "wasm" },
-                    { label: "no prl path for Qt module: Gui",
-                      value: "the cross qmake's qt.conf uses relative paths",
+                    { label: "no prl path",
+                      value: "Gui: the cross qmake's qt.conf uses relative paths",
                       source: "same wording as the desktop row above, different cause",
                       linkText: "blocker B →", linkId: "wasm" },
-                    { label: "Could NOT find Threads",
-                      value: "EM_CACHE points at a read-only or empty cache",
+                    { label: "Threads",
+                      value: "could NOT find it: EM_CACHE is read-only or empty",
                       source: "it must be a writable COPY, not an empty directory",
                       linkText: "trap 2 →", linkId: "wasm" },
-                    { label: "undefined symbol at link",
-                      value: "the Emscripten major differs from Qt's pin",
+                    { label: "undefined symbol",
+                      value: "at link: the Emscripten major differs from Qt's pin",
                       source: "same series here: " + root.val("qt-wasm", "emcc_series_match")
                               + " (wants " + root.val("qt-wasm", "emcc_recommended")
                               + ", built with " + root.val("qt-wasm", "emcc_built_with") + ")",
                       linkText: "trap 1 →", linkId: "wasm" },
-                    { label: "undefined symbol: qResourceFeatureZstd()",
+                    { label: "qResourceFeatureZstd",
                       value: "rcc ran from the host Qt, which has zstd; the wasm Qt does not",
                       source: "CXX_QT_AUTORCC_OPTIONS = \"--no-zstd\" - no page yet, see ~/docs/qt.md Part 1" },
-                    { label: "the identical error, instantly, after a correct fix",
-                      value: "a stale qrc object - cargo did not notice the variable",
+                    { label: "instant rebuild",
+                      value: "the identical error after a correct fix - a stale qrc object",
                       source: "touch the crate's build.rs; a suspiciously fast build is the tell",
                       linkText: "QML meets Rust →", linkId: "rust" }
                 ]
@@ -185,20 +194,20 @@ module URI or the resource lists. <tt>./qml-check</tt> finds binding \
 mistakes without running anything; it does <b>not</b> find these."
                 onLinkActivated: function(id) { root.openTopic(root.topicFor(id)) }
                 rows: [
-                    { label: "a blank window, no error at all",
-                      value: "the module URI disagrees in one of four places",
+                    { label: "blank window",
+                      value: "no error at all: the module URI disagrees in one of four places",
                       source: "or NIXDASH_QML_DIR, which redirects Main.qml alone",
                       linkText: "the Qt overview →", linkId: "overview" },
-                    { label: "No such file or directory, for a file that exists",
-                      value: "a ../ path in qml_files ate the module name",
+                    { label: "No such file",
+                      value: "for a file that exists: a ../ path in qml_files ate the module name",
                       source: "the shared qml/ is reached by symlink, never by ..",
                       linkText: "the Qt overview →", linkId: "overview" },
-                    { label: "GET on a local file is disabled by default",
-                      value: "a Rust api_base never became apiBase in QML",
+                    { label: "local file GET",
+                      value: "disabled by default: a Rust api_base never became apiBase in QML",
                       source: "undefined stringified into the URL and made it a path",
                       linkText: "QML meets Rust →", linkId: "rust" },
-                    { label: "qmltyperegistrar: QObject cannot be found",
-                      value: "upstream cxx-qt behaviour, not your setup",
+                    { label: "QObject warning",
+                      value: "qmltyperegistrar cannot find it - upstream cxx-qt, not your setup",
                       source: "every build, harmless at runtime - bumping cxx-qt will not fix it",
                       linkText: "QML meets Rust →", linkId: "rust" }
                 ]
