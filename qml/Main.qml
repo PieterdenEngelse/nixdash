@@ -347,7 +347,8 @@ ApplicationWindow {
         { "id": "", "name": "Overview" },
         { "id": "prefix", "name": "Why there is no single Qt" },
         { "id": "wasm", "name": "Two Qts, and the Emscripten between them" },
-        { "id": "rust", "name": "QML meets Rust" }
+        { "id": "rust", "name": "QML meets Rust" },
+        { "id": "symptoms", "name": "When it breaks" }
     ]
 
     /// A topic's display name, for the trail.
@@ -1132,6 +1133,8 @@ window was told about.</li></ul>"
             return qtWasmPage
         if (root.topic === "rust")
             return qtRustPage
+        if (root.topic === "symptoms")
+            return qtSymptomsPage
         return devQtPage
     }
 
@@ -1140,6 +1143,19 @@ window was told about.</li></ul>"
         QtPrefixPage {
             panels: root.panelsFor("qt")
             apiBase: dash.apiBase
+        }
+    }
+
+    // The index navigates. Its rows carry a topic id out through
+    // openTopic, and setting root.topic here is the whole mechanism - the
+    // page holds the destinations, Main holds the navigation, and
+    // ConfigSection in between knows about neither.
+    Component {
+        id: qtSymptomsPage
+        QtSymptomsPage {
+            panels: root.panelsFor("qt")
+            apiBase: dash.apiBase
+            onOpenTopic: function(id) { root.topic = id }
         }
     }
 
