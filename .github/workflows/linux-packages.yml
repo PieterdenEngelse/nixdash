@@ -189,7 +189,12 @@ jobs:
       # and draws nothing, so it cannot be caught by dpkg or by the linker.
       - name: The UI starts, finds its sibling engine, and loads its QML
         run: |
-          apt-get install -y --no-install-recommends xvfb
+          # xauth as well as xvfb: xvfb-run shells out to it to write the
+          # auth cookie, and --no-install-recommends leaves it out, so the
+          # ninth run got "xvfb-run: error: xauth command not found" and no
+          # UI at all. Keeping --no-install-recommends and naming the one
+          # thing actually needed, rather than pulling in the recommends set.
+          apt-get install -y --no-install-recommends xvfb xauth
           xvfb-run -a /usr/bin/nixdash-ui --spawn-engine >ui.log 2>&1 &
           for i in $(seq 1 60); do
             curl -sf http://127.0.0.1:3100/health >/dev/null && break || sleep 0.5
