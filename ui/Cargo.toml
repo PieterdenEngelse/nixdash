@@ -49,7 +49,21 @@ rather than inventing a reading."""
 # trace of them and they have to be named by hand. qml/*.qml imports exactly
 # QtQuick, QtQuick.Controls and QtQuick.Layouts; Controls additionally needs
 # its Fusion style at runtime, which is the style ui/src/main.rs sets.
-depends = "$auto, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-layouts, qml6-module-qtquick-templates, qml6-module-qtquick-window"
+#
+# The list is NOT just what the QML imports: QtQml.WorkerScript is here
+# because QtQuick itself loads it, and `apt-cache depends qml6-module-qtquick`
+# declares no such dependency on either Debian 12 or 13. Without it the window
+# opens empty and the only sign is in the UI's own log:
+#
+#   QQmlApplicationEngine failed to load component
+#   qrc:/qt/qml/nixdash/qml/Main.qml: module "QtQml.WorkerScript" is not installed
+#
+# Nothing in the build, the linker or dpkg objects. The only thing that
+# catches it is the CI step that launches the installed UI under xvfb and
+# greps its log, which is how this one was found. Expect to add to this list
+# when a QML import changes, and expect that step to be the thing that tells
+# you.
+depends = "$auto, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-layouts, qml6-module-qtquick-templates, qml6-module-qtquick-window, qml6-module-qtqml-workerscript"
 
 # The two binary paths have no ../ , unlike every other asset here, and that
 # is not an oversight: cargo-deb only recognises a source path beginning with
@@ -110,10 +124,10 @@ qt6-qtsvg = "*"
 # The whole depends string is restated because a variant replaces the field
 # rather than appending to it; keep these in step with the base above.
 [package.metadata.deb.variants.debian12]
-depends = "$auto, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-layouts, qml6-module-qtquick-templates, qml6-module-qtquick-window, libqt6qml6 (<< 6.5)"
+depends = "$auto, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-layouts, qml6-module-qtquick-templates, qml6-module-qtquick-window, qml6-module-qtqml-workerscript, libqt6qml6 (<< 6.5)"
 
 [package.metadata.deb.variants.debian13]
-depends = "$auto, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-layouts, qml6-module-qtquick-templates, qml6-module-qtquick-window, libqt6qml6 (<< 6.9)"
+depends = "$auto, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-layouts, qml6-module-qtquick-templates, qml6-module-qtquick-window, qml6-module-qtqml-workerscript, libqt6qml6 (<< 6.9)"
 
 [[package.metadata.generate-rpm.assets]]
 source = "target/release/nixdash-ui"
