@@ -165,6 +165,26 @@ jobs:
             ann 'the installed engine never answered on 3100' "$(cat engine.log)"
             exit 1
           fi
+
+          # Two panels that only a packaged install can get wrong, and that
+          # nothing else here would notice. Running the published 0.1.0 .deb
+          # on Debian 12 showed qt-runtime reporting "the desktop UI is not
+          # installed" while the UI sat beside the engine saying it - it knew
+          # only Nix profile paths - and disk reporting unknown because it
+          # hardcoded /nix. Both panels answer; both answered wrongly. The
+          # engine starting proves neither.
+          panels=$(curl -sf --max-time 10 http://127.0.0.1:3100/api/panels)
+          if grep -q 'the desktop UI is not installed' <<<"$panels"; then
+            ann 'qt-runtime cannot see the installed UI' \
+                "$(grep -o '"id":"qt-runtime".\{0,300\}' <<<"$panels")"
+            exit 1
+          fi
+          if grep -q '/nix: No such file or directory' <<<"$panels"; then
+            ann 'disk is still looking for a Nix store' \
+                "$(grep -o '"id":"disk".\{0,300\}' <<<"$panels")"
+            exit 1
+          fi
+          echo 'panels ok: qt-runtime sees the UI, disk measures a real filesystem'
           kill %1
 
       # The one test that cannot be run on the development machine at all:
@@ -323,6 +343,26 @@ jobs:
             ann 'the installed engine never answered on 3100' "$(cat engine.log)"
             exit 1
           fi
+
+          # Two panels that only a packaged install can get wrong, and that
+          # nothing else here would notice. Running the published 0.1.0 .deb
+          # on Debian 12 showed qt-runtime reporting "the desktop UI is not
+          # installed" while the UI sat beside the engine saying it - it knew
+          # only Nix profile paths - and disk reporting unknown because it
+          # hardcoded /nix. Both panels answer; both answered wrongly. The
+          # engine starting proves neither.
+          panels=$(curl -sf --max-time 10 http://127.0.0.1:3100/api/panels)
+          if grep -q 'the desktop UI is not installed' <<<"$panels"; then
+            ann 'qt-runtime cannot see the installed UI' \
+                "$(grep -o '"id":"qt-runtime".\{0,300\}' <<<"$panels")"
+            exit 1
+          fi
+          if grep -q '/nix: No such file or directory' <<<"$panels"; then
+            ann 'disk is still looking for a Nix store' \
+                "$(grep -o '"id":"disk".\{0,300\}' <<<"$panels")"
+            exit 1
+          fi
+          echo 'panels ok: qt-runtime sees the UI, disk measures a real filesystem'
           kill %1
 
       # See the long note on the equivalent step in the deb job.
