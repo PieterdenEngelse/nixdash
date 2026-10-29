@@ -124,7 +124,28 @@ jobs:
           # Version comes from the crate, so the MSI and the binary it
           # installs can never claim different versions.
           $v = (Select-String -Path engine\Cargo.toml -Pattern '^version = "(.+)"').Matches[0].Groups[1].Value
-          wix build packaging\wix\nixdash.wxs -arch x64 -d Version=$v -d StageDir=stage -o nixdash-$v-x64.msi
+
+          # ABSOLUTE, and this is the whole bug the sixth run exposed. With a
+          # relative -d StageDir=stage the Files wildcard in nixdash.wxs
+          # matched nothing and wix reported success: the MSI built, installed
+          # and registered itself while containing just two components, the
+          # Start Menu shortcut and its generated companion. The msiexec log
+          # showed no file-copy activity at all.
+          $stage = Join-Path (Get-Location).Path 'stage'
+          wix build packaging\wix\nixdash.wxs -arch x64 -d Version=$v -d StageDir=$stage -o nixdash-$v-x64.msi
+
+          # An empty MSI must never pass again. The Qt payload is tens of
+          # megabytes, so a package this small cannot contain it.
+          $msi = Get-Item "nixdash-$v-x64.msi"
+          "built $($msi.Name): $([math]::Round($msi.Length/1MB,1)) MB"
+          if ($msi.Length -lt 20MB) {
+            $staged = (Get-ChildItem stage -Recurse -File | Measure-Object -Sum Length)
+            Write-Output ("::error title=the MSI is too small to hold the payload::" +
+              "msi $([math]::Round($msi.Length/1MB,1)) MB, but stage/ holds " +
+              "$($staged.Count) files totalling $([math]::Round($staged.Sum/1MB,1)) MB%0A" +
+              "The Files wildcard in nixdash.wxs harvested nothing.")
+            exit 1
+          }
 
       # Install the thing and run it. A Windows runner has a session, so the
       # UI can actually start - which is the only way to exercise the sibling

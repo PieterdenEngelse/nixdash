@@ -117,12 +117,13 @@ jobs:
           #
           # % must be encoded before the newlines are, or the %0A introduced
           # here would itself be re-encoded to %250A.
-          # Everything this step prints also goes to check.log, which the
-          # failure step below attaches to the release. Release assets are
-          # public; Actions logs and artifacts both need a token, even on a
-          # public repository, which is why annotations were the only channel
-          # and they have proved unreliable to read.
-          exec > >(tee -a check.log) 2>&1
+          # check.log is written by run() below rather than by redirecting the
+          # whole step. `exec > >(tee -a check.log)` was the first attempt and
+          # it is a process substitution, which needs /dev/fd: it died on the
+          # step's first line in the container, leaving no log, nothing
+          # installed, and a failure indistinguishable from the one being
+          # investigated. A plain pipe to tee has no such dependency.
+          : > check.log
 
           ann() {
             local title=$1 body=$2
@@ -135,8 +136,12 @@ jobs:
           }
           run() {
             local out
-            if ! out=$("$@" 2>&1); then ann "$1" "$out"; exit 1; fi
-            printf '%s\n' "$out"
+            if ! out=$("$@" 2>&1); then
+              printf '%s\n' "$out" >> check.log
+              ann "$1" "$out"
+              exit 1
+            fi
+            printf '%s\n' "$out" | tee -a check.log
           }
 
           # A trap, because wrapping individual commands is not enough: the
@@ -297,12 +302,13 @@ jobs:
           #
           # % must be encoded before the newlines are, or the %0A introduced
           # here would itself be re-encoded to %250A.
-          # Everything this step prints also goes to check.log, which the
-          # failure step below attaches to the release. Release assets are
-          # public; Actions logs and artifacts both need a token, even on a
-          # public repository, which is why annotations were the only channel
-          # and they have proved unreliable to read.
-          exec > >(tee -a check.log) 2>&1
+          # check.log is written by run() below rather than by redirecting the
+          # whole step. `exec > >(tee -a check.log)` was the first attempt and
+          # it is a process substitution, which needs /dev/fd: it died on the
+          # step's first line in the container, leaving no log, nothing
+          # installed, and a failure indistinguishable from the one being
+          # investigated. A plain pipe to tee has no such dependency.
+          : > check.log
 
           ann() {
             local title=$1 body=$2
@@ -315,8 +321,12 @@ jobs:
           }
           run() {
             local out
-            if ! out=$("$@" 2>&1); then ann "$1" "$out"; exit 1; fi
-            printf '%s\n' "$out"
+            if ! out=$("$@" 2>&1); then
+              printf '%s\n' "$out" >> check.log
+              ann "$1" "$out"
+              exit 1
+            fi
+            printf '%s\n' "$out" | tee -a check.log
           }
 
           # A trap, because wrapping individual commands is not enough: the
