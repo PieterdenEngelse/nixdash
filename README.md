@@ -217,13 +217,19 @@ inputs.nixdash.url = "github:PieterdenEngelse/nixdash";
 }
 ```
 
-Or without home-manager at all:
+Or run it without installing anything, which needs no configuration and
+leaves nothing behind:
 
 ```sh
 nix run github:PieterdenEngelse/nixdash           # the engine
 nix run github:PieterdenEngelse/nixdash#ui        # the desktop UI
-nix profile install github:PieterdenEngelse/nixdash#ui
 ```
+
+Both read `NIXDASH_PORT`, so `NIXDASH_PORT=3199 nix run ...` runs this
+beside an already-installed one without the two contending for 3100.
+
+Deliberately no `nix profile install`: it collides with the module above,
+which already manages `bin/nixdash-ui` in the same profile.
 
 Every input of this flake is a `github:` URL so that these work. The
 Qt-for-WebAssembly shell needs a local checkout of its Qt, and a flake
