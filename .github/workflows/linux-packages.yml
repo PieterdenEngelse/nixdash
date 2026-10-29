@@ -37,6 +37,18 @@ name: linux-packages
 permissions:
   contents: write
 
+# Every `run:` is bash, said explicitly, because the container decides
+# otherwise. Debian's /bin/sh is dash, and the install step's helpers are
+# full of bashisms - ${var//a/b}, $'\n', local, and a trap on ERR, which dash
+# rejects outright with "trap: ERR: bad trap". Under -e that aborted the step
+# immediately: check.log was created and left empty, nothing was installed,
+# and the failure looked identical to the one being investigated. Runs three
+# through seven all died there. Fedora's /bin/sh is bash, which is the whole
+# reason the rpm job passed the same code.
+defaults:
+  run:
+    shell: bash
+
 on:
   push:
     tags: ["v*"]
