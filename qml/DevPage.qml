@@ -634,7 +634,7 @@ rather than stale, so it is not a silent failure." }
                           source: "both Qts, and what a build of yours actually uses",
                           linkText: "Qt development", linkId: "dev-qt" },
                         { label: "Browser UI built", value: root.val("qt-wasm", "built"),
-                          source: "ui-wasm/build.sh, inside nix develop .#wasm" },
+                          source: "ui-wasm/build.sh, inside nix develop ./ui-wasm" },
                         { label: "Up to date with qml/", value: root.val("qt-wasm", "stale") === "yes"
                                                                 ? "no" : root.val("qt-wasm", "stale"),
                           source: root.val("qt-wasm", "newest_qml_file") },
@@ -743,7 +743,7 @@ The one exception is the system switch, which needs neither - it reads \
 command kept in this project's <tt>Justfile</tt> - the same idea as a target \
 in a Makefile, or a script in a package.json.<br><br>\
 <tt>just browser</tt> runs the recipe named <tt>browser</tt>, which holds \
-<tt>nix develop .#wasm --command bash ui-wasm/build.sh</tt>. \
+<tt>nix develop ./ui-wasm --command bash ui-wasm/build.sh</tt>. \
 <tt>just --list</tt> prints every one of them with a line of \
 description.<br><br>\
 They exist so a long command line lives in exactly one place. That is also \
@@ -852,7 +852,7 @@ step: <tt>just serve</tt> puts the built bundle on :8099, and \
                     onStopRequested: function(id) { root.stopBuild(id) }
                     onLinkActivated: function(id) { if (id === "justfile") root.showJustfile() }
                     rows: [
-                        { label: "browser UI", value: "cd ~/Projects/nixdash && nix develop .#wasm --command bash ui-wasm/build.sh",
+                        { label: "browser UI", value: "cd ~/Projects/nixdash && nix develop ./ui-wasm --command bash ui-wasm/build.sh",
                           source: "3 · Draws something (twice) - then ./ui-wasm/serve.sh, which serves :8099",
                           buildId: "browser-ui", runLabel: "Build",
                           what: "Recompiles the shared QML to WebAssembly. Build does \

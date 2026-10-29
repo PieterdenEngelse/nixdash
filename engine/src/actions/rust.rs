@@ -102,7 +102,7 @@ pkgs.mkShell {
 /// decided it was not one. Two places deciding meant two answers.
 ///
 /// The default toolchain not carrying the Emscripten target is a fact, not a
-/// problem: nothing builds for Emscripten outside `nix develop .#wasm`, which
+/// problem: nothing builds for Emscripten outside `nix develop ./ui-wasm`, which
 /// brings its own toolchain. A compiled bundle is proof that the toolchain
 /// which matters resolves, and an offer to go install another one is then
 /// just a row that can never be cleared.
@@ -198,7 +198,7 @@ impl ActionProvider for RustTargets {
                                not what was measured here, so this can be \
                                true while that build works perfectly - \
                                nixdash's own browser UI is built that way, \
-                               in `nix develop .#wasm`, which already \
+                               in `nix develop ./ui-wasm`, which already \
                                supplies this target. Only needed if you are \
                                building for Qt WebAssembly at all: plain \
                                browser wasm uses wasm32-unknown-unknown, \

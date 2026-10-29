@@ -110,7 +110,7 @@ impl ActionProvider for WasmStale {
                            browser UI is affected, and the desktop one is \
                            already current.",
             },
-            command: "nix develop .#wasm --command bash ui-wasm/build.sh\n\
+            command: "nix develop ./ui-wasm --command bash ui-wasm/build.sh\n\
                       # then serve it:\n\
                       ./ui-wasm/serve.sh"
                 .into(),
@@ -121,7 +121,7 @@ impl ActionProvider for WasmStale {
                 program: "nix".into(),
                 args: vec![
                     "develop".into(),
-                    ".#wasm".into(),
+                    "./ui-wasm".into(),
                     "--command".into(),
                     "bash".into(),
                     "ui-wasm/build.sh".into(),

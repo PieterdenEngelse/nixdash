@@ -138,7 +138,7 @@ correct fix appears not to work."
                 height: browser.implicitHeight
                 title: "While building for the browser"
                 what: "Errors from a WebAssembly build - <tt>nix develop \
-.#wasm</tt> and <tt>ui-wasm/build.sh</tt>."
+./ui-wasm</tt> and <tt>ui-wasm/build.sh</tt>."
                 why: "A cross build runs two Qts and one Emscripten at once, \
 so the question behind most of these is <i>which half answered</i>."
                 ifWrong: "<b>Two of these share their wording with a desktop \

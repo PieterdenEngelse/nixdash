@@ -3,7 +3,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 HERE="$PWD"
-command -v python3 >/dev/null || { echo "run inside: nix develop .#wasm" >&2; exit 1; }
+command -v python3 >/dev/null || { echo "run inside: nix develop ./ui-wasm" >&2; exit 1; }
 # Serve the PUBLISHED tree, not the work area.
 #
 # build/ holds a mixture of two builds during a link and after an interrupted

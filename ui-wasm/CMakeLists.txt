@@ -33,7 +33,7 @@ if(NOT DEFINED CXXQT_QMAKE)
         set(CXXQT_QMAKE $ENV{CXXQT_QMAKE})
     else()
         message(FATAL_ERROR
-            "CXXQT_QMAKE is unset. Enter the wasm dev shell:  nix develop .#wasm")
+            "CXXQT_QMAKE is unset. Enter the wasm dev shell:  nix develop ./ui-wasm")
     endif()
 endif()
 

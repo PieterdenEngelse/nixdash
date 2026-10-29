@@ -133,7 +133,7 @@ providers. That is the whole of the feature.
 | `apply-nixdash-settings` | a declared setting differs from the running one | `home-manager switch`, unelevated |
 | `install-system-config` | the staged system file differs from the installed one | `install -m 0644 STAGED INSTALLED`, elevated |
 | `qt-merged-prefix` | the Qt prefix is missing host tools | nothing — Nix snippet |
-| `rebuild-wasm-ui` | the compiled `.wasm` is older than a file in `qml/` | `nix develop .#wasm --command bash ui-wasm/build.sh` |
+| `rebuild-wasm-ui` | the compiled `.wasm` is older than a file in `qml/` | `nix develop ./ui-wasm --command bash ui-wasm/build.sh` |
 | `rust-emscripten-target` | the rustc **on PATH** has no `wasm32-unknown-emscripten` std | nothing — Nix snippet |
 | `rust-lld` | `wasm32-unknown-unknown` is installed and `lld` is not on PATH | nothing — Nix snippet |
 | `rust-src-missing` | `rust-analyzer` is installed but the std sources are not | nothing — Nix snippet |
@@ -144,7 +144,7 @@ own probe rather than a conclusion about the machine.
 `rust-emscripten-target` says *the rustc on PATH*, not "no Emscripten
 target". It once said a Qt for WebAssembly build "cannot compile", which is a
 claim about every environment here drawn from one — and false on this machine,
-where the browser UI builds in `nix develop .#wasm` against a toolchain that
+where the browser UI builds in `nix develop ./ui-wasm` against a toolchain that
 carries exactly that target. Same failure as the Qt panel's old "no Qt in this
 environment": a missing tool in the environment you looked at is not a missing
 technology. The row still fires, because the rustc on PATH genuinely lacks the

@@ -362,7 +362,7 @@ for WebAssembly</a> &middot; \
                               shows the previous build with no indication \
                               anything is missing.",
                         if_wrong: "Run ui-wasm/build.sh inside \
-                                   `nix develop .#wasm`. The wasm toolchain \
+                                   `nix develop ./ui-wasm`. The wasm toolchain \
                                    is a separate dev shell - the default one \
                                    has no emcc and no wasm32 Rust target.",
                         sections: &[],

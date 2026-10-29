@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Build the wasm UI. Run inside:  nix develop .#wasm
+# Build the wasm UI. Run inside:  nix develop ./ui-wasm
 set -euo pipefail
 cd "$(dirname "$0")"
-: "${QT_WASM_TOOLCHAIN:?not in the wasm dev shell - run: nix develop .#wasm}"
+: "${QT_WASM_TOOLCHAIN:?not in the wasm dev shell - run: nix develop ./ui-wasm}"
 
 # One build at a time, whatever started it.
 #

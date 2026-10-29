@@ -61,7 +61,7 @@ The two builds differ in ways that are worth knowing before touching them:
 | build | pure Cargo | CMake + corrosion |
 | toolchain | nixpkgs rustc | fenix (nixpkgs has no `wasm32-unknown-emscripten` std) |
 | Qt | `pkgs.qt6.env` | `~/Projects/qt6-wasm` — Qt 6.11.2 cross-built from nixpkgs sources |
-| shell | `nix develop` | `nix develop .#wasm` |
+| shell | `nix develop` | `nix develop ./ui-wasm` |
 
 `QT_MODULES` in the CMake side must match `build.rs`, or cxx-qt fails with
 *"Qt module mismatch between cxx-qt-build and CMake!"*. Build traps for both

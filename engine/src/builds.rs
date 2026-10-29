@@ -149,7 +149,7 @@ pub fn all() -> Vec<Build> {
                 program: "nix".into(),
                 args: vec![
                     "develop".into(),
-                    ".#wasm".into(),
+                    "./ui-wasm".into(),
                     "--command".into(),
                     "bash".into(),
                     "ui-wasm/build.sh".into(),

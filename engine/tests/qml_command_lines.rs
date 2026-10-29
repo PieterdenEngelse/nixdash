@@ -27,7 +27,7 @@
 //! recipe instead.
 //!
 //! **An ellipsis means "abbreviated on purpose".** A column is narrow and
-//! some rows show `nix develop .#wasm … build.sh` rather than the whole line,
+//! some rows show `nix develop ./ui-wasm … build.sh` rather than the whole line,
 //! with the full form on the "Commands" board. `…` is the marker for
 //! that, and a value carrying one is skipped rather than being made to match
 //! something it is openly not.
@@ -199,7 +199,7 @@ fn every_command_shown_on_the_dev_page_is_a_recipe() {
             .unwrap_or(value.as_str());
         let named = named
             .strip_prefix("nix develop --command ")
-            .or_else(|| named.strip_prefix("nix develop .#wasm --command "))
+            .or_else(|| named.strip_prefix("nix develop ./ui-wasm --command "))
             .unwrap_or(named);
 
         // `just <name>` is satisfied by the recipe existing.

@@ -386,7 +386,7 @@ The full recipes, including the configure flags and module order, are \
                       source: "every variable on this page already exported" },
                     { label: "the host Qt", value: "pkgs.qt6.env",
                       source: "the merged prefix from the prefix page, reused unchanged" },
-                    { label: "the bundle", value: "nix develop .#wasm --command bash ui-wasm/build.sh",
+                    { label: "the bundle", value: "nix develop ./ui-wasm --command bash ui-wasm/build.sh",
                       source: "back in this repository, against that SDK" }
                 ]
             }

@@ -56,7 +56,7 @@ Panel {
         // DEFAULT toolchain - nixpkgs' rustc, the one the background service
         // sees. The browser UI is never built with that one: flake.nix pins a
         // separate toolchain carrying the emscripten std and `nix develop
-        // .#wasm` is where ui-wasm/build.sh runs. So the panel measured one
+        // ./ui-wasm` is where ui-wasm/build.sh runs. So the panel measured one
         // environment and pronounced on another, while the Suggested action
         // beside it correctly told you to go ahead and build.
         //

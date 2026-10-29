@@ -196,19 +196,57 @@ slower still.
 
 ## Installing
 
-On NixOS, the home-manager module below. On anything else, skip to
-[On a machine without Nix](#on-a-machine-without-nix).
+On NixOS, either route below. On anything else, see [Download](#download).
 
-A home-manager module ships with the project:
+### As a flake input
 
 ```nix
-# ~/.config/home-manager/modules/nixdash.nix
-{ ... }: {
-  imports = [ /path/to/nixdash/nix/hm-module.nix ];
+# flake.nix
+inputs.nixdash.url = "github:PieterdenEngelse/nixdash";
+```
+
+```nix
+# home.nix
+{ inputs, ... }: {
+  imports = [ inputs.nixdash.homeManagerModules.default ];
 
   services.nixdash = {
     enable = true;
     ui.autostart = true;   # optional: open the dashboard at login
+  };
+}
+```
+
+Or without home-manager at all:
+
+```sh
+nix run github:PieterdenEngelse/nixdash           # the engine
+nix run github:PieterdenEngelse/nixdash#ui        # the desktop UI
+nix profile install github:PieterdenEngelse/nixdash#ui
+```
+
+Every input of this flake is a `github:` URL so that these work. The
+Qt-for-WebAssembly shell needs a local checkout of its Qt, and a flake
+resolves all of its inputs whether or not you use them, so that shell lives
+in `ui-wasm/flake.nix` rather than here — `nix develop ./ui-wasm`.
+
+### From a clone
+
+For channel-based home-manager, where there is no flake to add an input to.
+The module is importable by path, so no flake plumbing is needed:
+
+```sh
+git clone https://github.com/PieterdenEngelse/nixdash ~/src/nixdash
+```
+
+```nix
+# ~/.config/home-manager/modules/nixdash.nix
+{ ... }: {
+  imports = [ /home/you/src/nixdash/nix/hm-module.nix ];
+
+  services.nixdash = {
+    enable = true;
+    ui.autostart = true;
   };
 }
 ```
@@ -321,7 +359,7 @@ cargo test -p nixdash-engine -- --include-ignored  # + tests needing this host
 cargo run  -p nixdash-engine       # :3100
 cargo run  -p nixdash-ui           # desktop
 
-nix develop .#wasm                 # Qt-for-WebAssembly toolchain
+nix develop ./ui-wasm                 # Qt-for-WebAssembly toolchain
 ./ui-wasm/build.sh && ./ui-wasm/serve.sh          # :8099
 ```
 

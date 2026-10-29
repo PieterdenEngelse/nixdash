@@ -1,16 +1,15 @@
 {
   description = "nixdash - NixOS config & monitoring, Rust engine + Qt/QML UIs";
 
+  # Every input here is a github: URL, deliberately. A flake resolves all of
+  # its inputs eagerly, so a single `path:` input to a local checkout makes
+  # the whole flake unusable to anyone else - `inputs.nixdash.url =
+  # "github:..."` and `nix run github:...` both fail on a machine that does
+  # not have that directory, however little of the flake depends on it. The
+  # Qt-for-WebAssembly shell needs exactly such a checkout, so it lives in
+  # ui-wasm/flake.nix instead: `nix develop ./ui-wasm`.
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/7fc6f2c20af0";
-
-    # Qt 6.11.2 cross-compiled for WebAssembly, plus the emsdk shim and a Rust
-    # toolchain carrying wasm32-unknown-emscripten std. Only the wasm UI needs
-    # it; the engine and desktop UI do not.
-    qt6-wasm = {
-      url = "path:/home/pde/Projects/qt6-wasm";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
 
     # nixpkgs' rustc ships std for the host only, so cross-compiling the
     # engine to Windows fails with "can't find crate for `std`" - the same
@@ -22,7 +21,7 @@
     };
   };
 
-  outputs = { self, nixpkgs, qt6-wasm, fenix }:
+  outputs = { self, nixpkgs, fenix }:
     let
       system = "x86_64-linux";
       pkgs = nixpkgs.legacyPackages.${system};
@@ -80,47 +79,6 @@
       };
 
       devShells.${system} = {
-        # Qt-for-wasm shell: `nix develop .#wasm`, then ui-wasm/build.sh
-        wasm =
-          let sdk = qt6-wasm.packages.${system}; in
-          pkgs.mkShell {
-            packages = [ sdk.rustToolchain ] ++ (with pkgs; [
-              cmake ninja python3 git curl jq
-            ]);
-
-            EMSDK = sdk.emsdk;
-            QT_HOST_PATH = sdk.hostQt;
-            QT_WASM_TOOLCHAIN = "${sdk.qtbase-wasm}/lib/cmake/Qt6/qt.toolchain.cmake";
-
-            # qt.toolchain.cmake RESETS CMAKE_PREFIX_PATH to qtbase's own
-            # prefix, so -DCMAKE_PREFIX_PATH at the merged prefix is silently
-            # dropped ("Could NOT find Qt6Qml"). This variable survives it.
-            QT_ADDITIONAL_PACKAGES_PREFIX_PATH = sdk.qt6-wasm;
-
-            # Must be the WASM qmake, never the host one.
-            CXXQT_QMAKE = "${sdk.qt6-wasm}/bin/qmake";
-
-            # rcc runs from the HOST Qt, which has zstd; the wasm Qt Core does
-            # not, so a zstd-compressed .qrc fails to link with
-            #   undefined symbol: qResourceFeatureZstd()
-            # rcc only reaches for zstd once the payload is worth compressing,
-            # so this stays hidden until a project has more than a file or two
-            # of QML. Colon-separated; passed through to rcc.
-            CXX_QT_AUTORCC_OPTIONS = "--no-zstd";
-
-            shellHook = ''
-              # emcc needs a writable cache. Copy from the REAL emscripten with
-              # -L: the emsdk shim is a symlink farm into the store, and a copy
-              # of it keeps read-only symlinks ("Could NOT find Threads").
-              export EM_CACHE="$(mktemp -d)/emcache"
-              cp -rL ${sdk.emscripten}/share/emscripten/cache "$EM_CACHE"
-              chmod -R u+w "$EM_CACHE"
-              export PATH="${sdk.emsdk}/share/emscripten:$PATH"
-              echo "nixdash wasm UI  |  $(rustc --version)"
-              echo "  ./ui-wasm/build.sh   then   ./ui-wasm/serve.sh"
-            '';
-          };
-
         # Optional additions nixdash can toggle from its Config page. The
         # file is generated and rewritten whole by the app; this flake is
         # hand-written and the app never edits it, which is the only way its

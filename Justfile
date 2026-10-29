@@ -210,7 +210,7 @@ watch-browser port="8099":
                 echo
                 echo "$(date +%H:%M:%S) rebuilding the browser UI ..."
                 start=$SECONDS
-                if nix develop .#wasm --command bash ui-wasm/build.sh; then
+                if nix develop ./ui-wasm --command bash ui-wasm/build.sh; then
                     echo "$(date +%H:%M:%S) built in $((SECONDS - start))s - the open tab reloads itself"
                 else
                     echo "$(date +%H:%M:%S) BUILD FAILED - the tab keeps the last good bundle"
@@ -274,7 +274,7 @@ both:
     echo "== the window (about 2 min)"
     nix develop --command cargo build -p nixdash-ui
     echo "== the browser bundle (about 6 min)"
-    nix develop .#wasm --command bash ui-wasm/build.sh
+    nix develop ./ui-wasm --command bash ui-wasm/build.sh
     # Single quotes: backticks inside double quotes are command
     # substitution, so the obvious way to write this would have RUN
     # `just fresh` and opened a window as a side effect of an echo.
@@ -283,7 +283,7 @@ both:
 # Rebuild the browser UI.
 [group('browser')]
 browser:
-    nix develop .#wasm --command bash ui-wasm/build.sh
+    nix develop ./ui-wasm --command bash ui-wasm/build.sh
 
 # Sends Cache-Control: no-cache, so a rebuild shows up on a plain reload
 # instead of pairing a new .wasm with cached glue.
