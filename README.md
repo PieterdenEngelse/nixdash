@@ -7,17 +7,20 @@ Loopback only. No accounts, no telemetry.
 
 ## Download
 
-From the [latest release](https://github.com/PieterdenEngelse/nixdash/releases/latest):
-one file, one command, then open **nixdash** from the application menu. The
-engine starts with the window and stops with it.
+Download one file, run one command, then open **nixdash** from the
+application menu. The engine starts with the window and stops with it.
 
-| Your system | Install |
-|---|---|
-| Debian 12, Ubuntu 24.04 | `sudo apt install ./nixdash_*_debian12_amd64.deb` |
-| Debian 13 | `sudo apt install ./nixdash_*_debian13_amd64.deb` |
-| Fedora 41 | `sudo dnf install ./nixdash-*-fedora41.x86_64.rpm` |
-| Windows 10+ | double-click `nixdash-*-x64.msi` |
-| **NixOS** | the home-manager module — [Installing](#installing), below |
+These link to **0.1.0** directly; the
+[latest release](https://github.com/PieterdenEngelse/nixdash/releases/latest)
+is always current if this table has fallen behind.
+
+| Your system | Download | Then |
+|---|---|---|
+| Debian 12, Ubuntu 24.04 | [nixdash_0.1.0_debian12_amd64.deb](https://github.com/PieterdenEngelse/nixdash/releases/download/v0.1.0/nixdash_0.1.0_debian12_amd64.deb) | `sudo apt install ./nixdash_0.1.0_debian12_amd64.deb` |
+| Debian 13 | [nixdash_0.1.0_debian13_amd64.deb](https://github.com/PieterdenEngelse/nixdash/releases/download/v0.1.0/nixdash_0.1.0_debian13_amd64.deb) | `sudo apt install ./nixdash_0.1.0_debian13_amd64.deb` |
+| Fedora 41 | [nixdash-0.1.0-fedora41.x86_64.rpm](https://github.com/PieterdenEngelse/nixdash/releases/download/v0.1.0/nixdash-0.1.0-fedora41.x86_64.rpm) | `sudo dnf install ./nixdash-0.1.0-fedora41.x86_64.rpm` |
+| Windows 10+ | [nixdash-0.1.0-x64.msi](https://github.com/PieterdenEngelse/nixdash/releases/download/v0.1.0/nixdash-0.1.0-x64.msi) | double-click it |
+| **NixOS** | — | the home-manager module: [Installing](#installing), below |
 
 Windows will say the publisher is unknown, because the MSI is unsigned:
 *More info → Run anyway*. It installs per-user and never asks for an
