@@ -199,9 +199,21 @@ jobs:
           curl -sf http://127.0.0.1:3100/health
           # A QML failure leaves a running process and an empty window, so the
           # log is the only place it shows up.
-          if grep -qiE 'qml|QQmlApplicationEngine|is not a type' ui.log; then
-            echo '--- QML errors:'; cat ui.log; exit 1
+          # Match what a QML failure actually says, not the substring "qml".
+          # The previous pattern was `qml|QQmlApplicationEngine|is not a type`
+          # case-insensitively, so any ordinary Qt startup line mentioning qml
+          # failed the step - and because this step collected nothing, there
+          # was no way to tell a real error from that.
+          #
+          # These three are the signatures that matter: the engine giving up
+          # on the root component, a module the QML engine cannot resolve, and
+          # a type it cannot resolve.
+          if grep -qE 'QQmlApplicationEngine failed to load component|is not installed|is not a type' ui.log; then
+            echo '--- QML errors:'
+            cat ui.log
+            exit 1
           fi
+          echo 'UI started, engine answered, no QML errors in its log'
 
       - uses: actions/upload-artifact@v4
         with:
@@ -232,6 +244,9 @@ jobs:
             echo
             echo "=== engine log ==="
             cat engine.log 2>/dev/null || echo "(no engine.log)"
+            echo
+            echo "=== UI log (xvfb run) ==="
+            cat ui.log 2>/dev/null || echo "(no ui.log)"
             echo
             echo "=== the step's own output ==="
             cat check.log 2>/dev/null || echo "(no check.log)"
@@ -371,9 +386,21 @@ jobs:
             curl -sf http://127.0.0.1:3100/health >/dev/null && break || sleep 0.5
           done
           curl -sf http://127.0.0.1:3100/health
-          if grep -qiE 'qml|QQmlApplicationEngine|is not a type' ui.log; then
-            echo '--- QML errors:'; cat ui.log; exit 1
+          # Match what a QML failure actually says, not the substring "qml".
+          # The previous pattern was `qml|QQmlApplicationEngine|is not a type`
+          # case-insensitively, so any ordinary Qt startup line mentioning qml
+          # failed the step - and because this step collected nothing, there
+          # was no way to tell a real error from that.
+          #
+          # These three are the signatures that matter: the engine giving up
+          # on the root component, a module the QML engine cannot resolve, and
+          # a type it cannot resolve.
+          if grep -qE 'QQmlApplicationEngine failed to load component|is not installed|is not a type' ui.log; then
+            echo '--- QML errors:'
+            cat ui.log
+            exit 1
           fi
+          echo 'UI started, engine answered, no QML errors in its log'
 
       - uses: actions/upload-artifact@v4
         with:
@@ -398,6 +425,9 @@ jobs:
             echo
             echo "=== engine log ==="
             cat engine.log 2>/dev/null || echo "(no engine.log)"
+            echo
+            echo "=== UI log (xvfb run) ==="
+            cat ui.log 2>/dev/null || echo "(no ui.log)"
             echo
             echo "=== the step's own output ==="
             cat check.log 2>/dev/null || echo "(no check.log)"
