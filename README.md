@@ -1,19 +1,34 @@
-| `disk` | 30s | free space on the filesystem holding the Nix store |
-| `qt` | 60s | which Qt a build would use, and whether its prefix is complete |
-| `rust` | 60s | toolchain, and the target std libraries it can actually build for |
-| 6 more panels, docs | **done** |
-| 7 info model (what/why/if-wrong, enforced) | **done** |
-| 8 Monitor + Config pages | engine half done |
-| 9 info buttons in the UI | |
-| 10 Qt and Rust panels | |
-| 11 config actions (Nix snippets) | |
-| 12 docs | **done** |
 # nixdash
 
 Local-first **config and monitoring for one NixOS machine**: a Rust engine with
 Qt/QML UIs (desktop, and the same QML compiled to WebAssembly).
 
 Loopback only. No accounts, no telemetry.
+
+## Download
+
+From the [latest release](https://github.com/PieterdenEngelse/nixdash/releases/latest):
+one file, one command, then open **nixdash** from the application menu. The
+engine starts with the window and stops with it.
+
+| Your system | Install |
+|---|---|
+| Debian 12, Ubuntu 24.04 | `sudo apt install ./nixdash_*_debian12_amd64.deb` |
+| Debian 13 | `sudo apt install ./nixdash_*_debian13_amd64.deb` |
+| Fedora 41 | `sudo dnf install ./nixdash-*-fedora41.x86_64.rpm` |
+| Windows 10+ | double-click `nixdash-*-x64.msi` |
+| **NixOS** | the home-manager module — [Installing](#installing), below |
+
+Windows will say the publisher is unknown, because the MSI is unsigned:
+*More info → Run anyway*. It installs per-user and never asks for an
+administrator. Took the wrong Linux file? `apt` and `dnf` refuse it rather
+than installing something that opens a broken window.
+
+[On a machine without Nix](#on-a-machine-without-nix) has the rest: enabling
+the engine at login, which panels can answer off NixOS, and how the packages
+are built.
+
+Or from a checkout, which is what [Developing](#developing) is about:
 
 ```sh
 nix develop
@@ -222,33 +237,15 @@ nix run .#ui         # desktop UI
 
 ### On a machine without Nix
 
-Take the file for your system from the
-[releases page](https://github.com/PieterdenEngelse/nixdash/releases) and run
-the one command next to it. If that page is empty, no release has been cut
-yet — see [Building them](#building-them) below.
+The install itself is the table at [the top of this file](#download) — the
+distro is in each filename, and in the command, because downloading two of
+them to compare is the obvious thing to do and `./nixdash_*.deb` would then
+match both. What follows is everything that table leaves out.
 
-| Your system | Install |
-|---|---|
-| Debian 12, Ubuntu 24.04 | `sudo apt install ./nixdash_*_debian12_amd64.deb` |
-| Debian 13 | `sudo apt install ./nixdash_*_debian13_amd64.deb` |
-| Fedora 41 | `sudo dnf install ./nixdash-*-fedora41.x86_64.rpm` |
-| Windows 10+ | double-click `nixdash-*-x64.msi` |
-
-The distro is in each filename, and in the command, because downloading two
-of them to compare is the obvious thing to do and `./nixdash_*.deb` would
-then match both.
-
-Then open **nixdash** from the application menu. That is the whole install —
-the engine starts with the window and stops with it.
-
-Two things worth knowing, and nothing else:
-
-- **Took the wrong Linux file?** `apt` and `dnf` refuse it, with a message
-  naming the Qt version, rather than installing something that opens a broken
-  window. There is one build per Qt release line because cxx-qt links Qt's
-  private API — [the detail](packaging/linux/README.md), if you want it.
-- **Windows says the publisher is unknown.** The MSI is unsigned. *More info
-  → Run anyway*. It installs per-user, so it never asks for an administrator.
+A wrong download costs one legible error rather than an afternoon: there is
+one build per Qt release line, because cxx-qt links Qt's private API, and
+each package caps the Qt version it will install against. The
+[packaging notes](packaging/linux/README.md) have the mechanism.
 
 To keep the engine running in the background from login instead, so it is
 collecting before you open the window:
