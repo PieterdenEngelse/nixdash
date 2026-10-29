@@ -129,14 +129,6 @@ jobs:
           #
           # % must be encoded before the newlines are, or the %0A introduced
           # here would itself be re-encoded to %250A.
-          # check.log is written by run() below rather than by redirecting the
-          # whole step. `exec > >(tee -a check.log)` was the first attempt and
-          # it is a process substitution, which needs /dev/fd: it died on the
-          # step's first line in the container, leaving no log, nothing
-          # installed, and a failure indistinguishable from the one being
-          # investigated. A plain pipe to tee has no such dependency.
-          : > check.log
-
           ann() {
             local title=$1 body=$2
             printf '::error::%s\n' "$title"
@@ -148,12 +140,8 @@ jobs:
           }
           run() {
             local out
-            if ! out=$("$@" 2>&1); then
-              printf '%s\n' "$out" >> check.log
-              ann "$1" "$out"
-              exit 1
-            fi
-            printf '%s\n' "$out" | tee -a check.log
+            if ! out=$("$@" 2>&1); then ann "$1" "$out"; exit 1; fi
+            printf '%s\n' "$out"
           }
 
           # A trap, because wrapping individual commands is not enough: the
@@ -233,39 +221,6 @@ jobs:
       # they expire. A release asset is a plain public URL, which is the whole
       # point of building these.
 
-      # Only on failure, and only for the duration of getting this green.
-      - name: Attach the failure log to the release
-        if: failure()
-        run: |
-          {
-            echo "=== dpkg/rpm state ==="
-            (dpkg -l nixdash 2>/dev/null || rpm -q nixdash 2>/dev/null) || echo "(not installed)"
-            echo
-            echo "=== files the package placed ==="
-            (dpkg -L nixdash 2>/dev/null || rpm -ql nixdash 2>/dev/null) || echo "(none)"
-            echo
-            echo "=== /usr/bin ==="
-            ls -la /usr/bin/nixdash* 2>&1 || echo "(no nixdash binaries)"
-            echo
-            echo "=== engine log ==="
-            cat engine.log 2>/dev/null || echo "(no engine.log)"
-            echo
-            echo "=== UI log (xvfb run) ==="
-            cat ui.log 2>/dev/null || echo "(no ui.log)"
-            echo
-            echo "=== the step's own output ==="
-            cat check.log 2>/dev/null || echo "(no check.log)"
-          } > "ci-diagnostics-${LABEL}.txt" 2>&1
-          echo "--- collected:"; wc -l "ci-diagnostics-${LABEL}.txt"
-        env:
-          LABEL: ${{ matrix.suffix || 'rpm' }}
-
-      - name: Publish the failure log
-        if: failure() && startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: ci-diagnostics-*.txt
-          fail_on_unmatched_files: false
 
       - name: Attach to the release
         if: startsWith(github.ref, 'refs/tags/v')
@@ -334,14 +289,6 @@ jobs:
           #
           # % must be encoded before the newlines are, or the %0A introduced
           # here would itself be re-encoded to %250A.
-          # check.log is written by run() below rather than by redirecting the
-          # whole step. `exec > >(tee -a check.log)` was the first attempt and
-          # it is a process substitution, which needs /dev/fd: it died on the
-          # step's first line in the container, leaving no log, nothing
-          # installed, and a failure indistinguishable from the one being
-          # investigated. A plain pipe to tee has no such dependency.
-          : > check.log
-
           ann() {
             local title=$1 body=$2
             printf '::error::%s\n' "$title"
@@ -353,12 +300,8 @@ jobs:
           }
           run() {
             local out
-            if ! out=$("$@" 2>&1); then
-              printf '%s\n' "$out" >> check.log
-              ann "$1" "$out"
-              exit 1
-            fi
-            printf '%s\n' "$out" | tee -a check.log
+            if ! out=$("$@" 2>&1); then ann "$1" "$out"; exit 1; fi
+            printf '%s\n' "$out"
           }
 
           # A trap, because wrapping individual commands is not enough: the
@@ -414,39 +357,6 @@ jobs:
           if-no-files-found: error
 
 
-      # Only on failure, and only for the duration of getting this green.
-      - name: Attach the failure log to the release
-        if: failure()
-        run: |
-          {
-            echo "=== dpkg/rpm state ==="
-            (dpkg -l nixdash 2>/dev/null || rpm -q nixdash 2>/dev/null) || echo "(not installed)"
-            echo
-            echo "=== files the package placed ==="
-            (dpkg -L nixdash 2>/dev/null || rpm -ql nixdash 2>/dev/null) || echo "(none)"
-            echo
-            echo "=== /usr/bin ==="
-            ls -la /usr/bin/nixdash* 2>&1 || echo "(no nixdash binaries)"
-            echo
-            echo "=== engine log ==="
-            cat engine.log 2>/dev/null || echo "(no engine.log)"
-            echo
-            echo "=== UI log (xvfb run) ==="
-            cat ui.log 2>/dev/null || echo "(no ui.log)"
-            echo
-            echo "=== the step's own output ==="
-            cat check.log 2>/dev/null || echo "(no check.log)"
-          } > "ci-diagnostics-${LABEL}.txt" 2>&1
-          echo "--- collected:"; wc -l "ci-diagnostics-${LABEL}.txt"
-        env:
-          LABEL: ${{ matrix.suffix || 'rpm' }}
-
-      - name: Publish the failure log
-        if: failure() && startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: ci-diagnostics-*.txt
-          fail_on_unmatched_files: false
 
       - name: Attach to the release
         if: startsWith(github.ref, 'refs/tags/v')

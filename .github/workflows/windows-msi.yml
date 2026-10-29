@@ -220,55 +220,6 @@ jobs:
           }
           Invoke-RestMethod http://127.0.0.1:3100/health
 
-      # Only on failure, and only until this is green. Release assets are
-      # public, where Actions logs and artifacts both need a token.
-      - name: Collect and publish the failure log
-        if: failure()
-        shell: pwsh
-        run: |
-          $dir = "$env:LOCALAPPDATA\Programs\nixdash"
-
-          $reg = Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall',
-                               'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall' -ErrorAction SilentlyContinue |
-                 ForEach-Object { Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue } |
-                 Where-Object { $_.DisplayName -like '*nixdash*' } |
-                 Select-Object DisplayName, DisplayVersion, InstallLocation |
-                 Format-List | Out-String
-
-          $roots = @($env:LOCALAPPDATA, $env:APPDATA, $env:ProgramFiles, ${env:ProgramFiles(x86)}) |
-                   Where-Object { $_ -and (Test-Path $_) }
-          $exes = $roots |
-                  ForEach-Object { Get-ChildItem $_ -Recurse -Filter 'nixdash-*.exe' -Force -ErrorAction SilentlyContinue } |
-                  Select-Object -ExpandProperty FullName -First 20
-          $staged = Get-ChildItem stage -Recurse -Name -ErrorAction SilentlyContinue
-          $msilog = Get-Content install.log -ErrorAction SilentlyContinue | Out-String
-
-          $report = @()
-          $report += '=== expected install dir ==='
-          $report += $dir
-          $report += "exists: $(Test-Path $dir)"
-          $report += ''
-          $report += '=== uninstall registry entries matching nixdash ==='
-          $report += $reg
-          $report += '=== nixdash-*.exe under LOCALAPPDATA / APPDATA / ProgramFiles ==='
-          $report += ($exes -join "`n")
-          $report += ''
-          $report += '=== staged payload ==='
-          $report += ($staged -join "`n")
-          $report += ''
-          $report += '=== msiexec verbose log ==='
-          $report += $msilog
-          $report | Set-Content 'ci-diagnostics-msi.txt' -Encoding utf8
-
-          Get-Item 'ci-diagnostics-msi.txt' | Select-Object Name, Length | Format-List
-
-      - name: Publish the failure log
-        if: failure() && startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: ci-diagnostics-msi.txt
-          fail_on_unmatched_files: false
-
       - uses: actions/upload-artifact@v4
         with:
           name: nixdash-msi
