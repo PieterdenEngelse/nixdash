@@ -10,16 +10,16 @@ Loopback only. No accounts, no telemetry.
 Download one file, run one command, then open **nixdash** from the
 application menu. The engine starts with the window and stops with it.
 
-These link to **0.1.0** directly; the
+These link to **0.1.1** directly; the
 [latest release](https://github.com/PieterdenEngelse/nixdash/releases/latest)
 is always current if this table has fallen behind.
 
 | Your system | Download | Then |
 |---|---|---|
-| Debian 12, Ubuntu 24.04 | [nixdash_0.1.0_debian12_amd64.deb](https://github.com/PieterdenEngelse/nixdash/releases/download/v0.1.0/nixdash_0.1.0_debian12_amd64.deb) | `sudo apt install ./nixdash_0.1.0_debian12_amd64.deb` |
-| Debian 13 | [nixdash_0.1.0_debian13_amd64.deb](https://github.com/PieterdenEngelse/nixdash/releases/download/v0.1.0/nixdash_0.1.0_debian13_amd64.deb) | `sudo apt install ./nixdash_0.1.0_debian13_amd64.deb` |
-| Fedora 41 | [nixdash-0.1.0-fedora41.x86_64.rpm](https://github.com/PieterdenEngelse/nixdash/releases/download/v0.1.0/nixdash-0.1.0-fedora41.x86_64.rpm) | `sudo dnf install ./nixdash-0.1.0-fedora41.x86_64.rpm` |
-| Windows 10+ | [nixdash-0.1.0-x64.msi](https://github.com/PieterdenEngelse/nixdash/releases/download/v0.1.0/nixdash-0.1.0-x64.msi) | double-click it |
+| Debian 12, Ubuntu 24.04 | [nixdash_0.1.1_debian12_amd64.deb](https://github.com/PieterdenEngelse/nixdash/releases/download/v0.1.1/nixdash_0.1.1_debian12_amd64.deb) | `sudo apt install ./nixdash_0.1.1_debian12_amd64.deb` |
+| Debian 13 | [nixdash_0.1.1_debian13_amd64.deb](https://github.com/PieterdenEngelse/nixdash/releases/download/v0.1.1/nixdash_0.1.1_debian13_amd64.deb) | `sudo apt install ./nixdash_0.1.1_debian13_amd64.deb` |
+| Fedora 41 | [nixdash-0.1.1-fedora41.x86_64.rpm](https://github.com/PieterdenEngelse/nixdash/releases/download/v0.1.1/nixdash-0.1.1-fedora41.x86_64.rpm) | `sudo dnf install ./nixdash-0.1.1-fedora41.x86_64.rpm` |
+| Windows 10+ | [nixdash-0.1.1-x64.msi](https://github.com/PieterdenEngelse/nixdash/releases/download/v0.1.1/nixdash-0.1.1-x64.msi) | double-click it |
 | **NixOS** | — | the home-manager module: [Installing](#installing), below |
 
 Windows will say the publisher is unknown, because the MSI is unsigned:

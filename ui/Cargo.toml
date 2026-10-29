@@ -1,6 +1,6 @@
 [package]
 name = "nixdash-ui"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 # The repository is dual-licensed; both files ship in the packages below.
 license = "MIT OR Apache-2.0"

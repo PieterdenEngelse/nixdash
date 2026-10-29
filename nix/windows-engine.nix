@@ -35,7 +35,7 @@ let
 in
 rustPlatform.buildRustPackage {
   pname = "nixdash-engine-windows";
-  version = "0.1.0";
+  version = "0.1.1";
 
   # Same filter as nix/engine.nix, and for the same reason: target/ holds
   # gigabytes.

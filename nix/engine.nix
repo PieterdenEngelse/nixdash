@@ -8,7 +8,7 @@
 
 rustPlatform.buildRustPackage {
   pname = "nixdash-engine";
-  version = "0.1.0";
+  version = "0.1.1";
 
   # Filter the source rather than passing the directory wholesale: target/
   # holds gigabytes of build output, and this is not a git repo so nothing
