@@ -74,7 +74,7 @@ jobs:
           apt-get install -y --no-install-recommends \
             ca-certificates curl git build-essential pkg-config \
             qt6-base-dev qt6-declarative-dev qt6-svg-dev qt6-shadertools-dev \
-            libgl1-mesa-dev desktop-file-utils
+            libgl1-mesa-dev desktop-file-utils jq
 
       - uses: actions/checkout@v4
 
@@ -171,20 +171,36 @@ jobs:
           # on Debian 12 showed qt-runtime reporting "the desktop UI is not
           # installed" while the UI sat beside the engine saying it - it knew
           # only Nix profile paths - and disk reporting unknown because it
-          # hardcoded /nix. Both panels answer; both answered wrongly. The
+          # hardcoded /nix. Both panels answered; both answered wrongly. The
           # engine starting proves neither.
+          #
+          # Checked on the HEADLINE field with jq, not by grepping the
+          # payload. The first version of this guard grepped the whole
+          # response and matched the panel's own if_wrong documentation, which
+          # explains that very symptom - so it failed on a build where the fix
+          # worked. jq is one package in each container and removes the whole
+          # class of mistake.
           panels=$(curl -sf --max-time 10 http://127.0.0.1:3100/api/panels)
-          if grep -q 'the desktop UI is not installed' <<<"$panels"; then
-            ann 'qt-runtime cannot see the installed UI' \
-                "$(grep -o '"id":"qt-runtime".\{0,300\}' <<<"$panels")"
-            exit 1
-          fi
-          if grep -q '/nix: No such file or directory' <<<"$panels"; then
-            ann 'disk is still looking for a Nix store' \
-                "$(grep -o '"id":"disk".\{0,300\}' <<<"$panels")"
-            exit 1
-          fi
-          echo 'panels ok: qt-runtime sees the UI, disk measures a real filesystem'
+          get() { jq -r --arg id "$1" \
+            '.panels[] | select(.id==$id) | "\(.status // "-") \(.headline // .error // "")"' \
+            <<<"$panels"; }
+
+          # Printed whether or not they pass: a run that says only "ok" cannot
+          # be checked afterwards, and this is the only place these panels are
+          # ever seen on a packaged install.
+          echo "qt-runtime: $(get qt-runtime)"
+          echo "disk:       $(get disk)"
+
+          case "$(get qt-runtime)" in
+            *"not installed"*|*"nothing to inspect"*)
+              ann 'qt-runtime cannot see the installed UI' "$(get qt-runtime)"
+              exit 1 ;;
+          esac
+          case "$(get disk)" in
+            *"No such file or directory"*)
+              ann 'disk is still looking for a Nix store' "$(get disk)"
+              exit 1 ;;
+          esac
           kill %1
 
       # The one test that cannot be run on the development machine at all:
@@ -258,7 +274,7 @@ jobs:
           dnf install -y \
             git curl gcc gcc-c++ make pkgconf-pkg-config \
             qt6-qtbase-devel qt6-qtdeclarative-devel qt6-qtsvg-devel \
-            qt6-qtshadertools-devel mesa-libGL-devel
+            qt6-qtshadertools-devel mesa-libGL-devel jq
 
       - uses: actions/checkout@v4
 
