@@ -379,7 +379,12 @@ impl Collector for RustBuildCollector {
 
     fn status(&self, v: &Value) -> (Status, String) {
         if v["project_dir"].is_null() {
-            return (Status::Unknown, "no source tree to compare against".into());
+            return (
+                Status::Unknown,
+                // As in qt_wasm: name the question, not the absence. There
+                // is no source tree on a packaged install by design.
+                "no nixdash source tree here - this panel describes a checkout".into(),
+            );
         }
         // Both of these are "could not look", and neither is "current".
         // Reporting ok here would be the panel reassuring you about a

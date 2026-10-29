@@ -514,13 +514,24 @@ run is worse than no monitor.",
         // one was already contradicting it.
         let from_closure = v["source"].as_str() == Some(UI_CLOSURE);
 
+        // The two headlines a machine with a qmake actually shows name
+        // **cxx-qt**, because that is the standard being applied and it is not
+        // a universal one. A stock Debian qt6-base-dev is a correct, healthy
+        // Qt install, and this panel calls it Bad - rightly, since cxx-qt
+        // cannot build against it, but "2 host tool(s) missing" invites the
+        // reader to conclude their Qt is broken. Naming the consumer makes the
+        // claim exactly as big as the measurement, which is the same rule
+        // headlines_claim_only_what_was_measured enforces for "no Qt": the
+        // tools are not missing from Qt, they are missing from what cxx-qt
+        // needs one prefix to hold. This matters more now the packages put
+        // the panel in front of people who are not building cxx-qt at all.
         match (version, complete, from_closure) {
-            (Some(ver), true, false) => (Status::Ok, format!("{ver}, prefix complete")),
+            (Some(ver), true, false) => (Status::Ok, format!("{ver}, ready for cxx-qt")),
             (Some(ver), false, false) => {
                 let missing = v["tools_missing"].as_array().map_or(0, |a| a.len());
                 (
                     Status::Bad,
-                    format!("{ver}, {missing} host tool(s) missing"),
+                    format!("{ver}, missing {missing} host tool(s) cxx-qt needs"),
                 )
             }
             (Some(ver), true, true) => (

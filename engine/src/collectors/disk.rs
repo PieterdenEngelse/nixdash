@@ -6,7 +6,8 @@ use serde_json::Value;
 
 use crate::collector::{Collector, Info, PanelMeta, StatInfo, Status, Subject};
 
-/// Free space on the filesystem holding the Nix store.
+/// Free space on the filesystem holding the Nix store, or `/` where there
+/// is no store.
 ///
 /// The store is where a NixOS machine actually runs out of disk: every
 /// rebuild adds paths and nothing is removed until a GC. Watching `/nix`
@@ -26,7 +27,24 @@ struct DiskReading {
     used_fraction: f64,
 }
 
-const WATCHED: &str = "/nix";
+/// The filesystem this panel reports on.
+///
+/// `/nix` where one exists, because on NixOS the store is what fills up and a
+/// rebuild is what fills it. Off NixOS there is no store, `df /nix` exits 1,
+/// and the panel reported `unknown` on a machine whose disk is perfectly
+/// measurable - "could not look" was true of the path asked about and
+/// misleading about the question. `/` answers the same question against a
+/// filesystem that is actually there.
+///
+/// Resolved per sample rather than once at startup, so installing Nix on a
+/// machine that had none is noticed without a restart.
+fn watched() -> &'static str {
+    if std::path::Path::new("/nix").is_dir() {
+        "/nix"
+    } else {
+        "/"
+    }
+}
 
 fn parse_df(stdout: &str) -> Result<(u64, u64, u64)> {
     let mut lines = stdout.lines();
@@ -49,7 +67,8 @@ impl Collector for DiskCollector {
         PanelMeta {
             id: "disk",
             title: "Disk (/nix)",
-            description: "Free space on the filesystem holding the Nix store",
+            description:
+                "Free space on the filesystem holding the Nix store, or / where there is none",
             // Disk moves slowly except during a build; 30s is plenty.
             interval_secs: 30,
             subject: Subject::NixOS,
@@ -131,7 +150,7 @@ impl Collector for DiskCollector {
 
     fn sample(&self) -> Result<Value> {
         let out = Command::new("df")
-            .args(["-B1", "--output=size,used,avail", WATCHED])
+            .args(["-B1", "--output=size,used,avail", watched()])
             .output()
             .context("running df")?;
         anyhow::ensure!(
@@ -144,7 +163,7 @@ impl Collector for DiskCollector {
         let (total, used, avail) = parse_df(&String::from_utf8_lossy(&out.stdout))?;
 
         Ok(serde_json::to_value(DiskReading {
-            path: WATCHED,
+            path: watched(),
             total_bytes: total,
             used_bytes: used,
             avail_bytes: avail,

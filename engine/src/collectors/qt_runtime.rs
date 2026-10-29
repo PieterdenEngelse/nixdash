@@ -37,6 +37,27 @@ pub(crate) fn ui_candidates() -> Vec<PathBuf> {
         out.push(PathBuf::from(&home).join(".local/state/nix/profile/bin/nixdash-ui"));
     }
     out.push(PathBuf::from("/run/current-system/sw/bin/nixdash-ui"));
+
+    // Beside this executable, which is where every PACKAGED install puts the
+    // UI: /usr/bin for the .deb and .rpm, the install directory for the MSI.
+    // Without it this panel reported "the desktop UI is not installed" on a
+    // Debian box where the UI was sitting next to the engine that said so -
+    // measured, 2026-10-29, with the published 0.1.0 .deb. The three Nix
+    // paths above are the only ones it knew, so the panel was NixOS-only by
+    // accident rather than by design.
+    //
+    // Still not a PATH lookup, for the reason given above: a sibling of the
+    // running binary is a fact about this installation, where PATH is a fact
+    // about whoever started the service.
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            out.push(dir.join(if cfg!(windows) {
+                "nixdash-ui.exe"
+            } else {
+                "nixdash-ui"
+            }));
+        }
+    }
     out
 }
 

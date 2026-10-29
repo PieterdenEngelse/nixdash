@@ -693,7 +693,16 @@ came from the store, and the staleness answer should not be trusted.",
 
     fn status(&self, v: &Value) -> (Status, String) {
         if v["project_dir"].is_null() {
-            return (Status::Unknown, "project directory not found".into());
+            return (
+                Status::Unknown,
+                // Says which question cannot be answered, not just that
+                // something is absent. This panel compares a built bundle
+                // against a source tree, so on a packaged install there is
+                // nothing for it to do and never will be - and a bare
+                // "not found" left the reader looking for what they had
+                // installed wrongly.
+                "no nixdash source tree here - this panel describes a checkout".into(),
+            );
         }
         if !v["built"].as_bool().unwrap_or(false) {
             // Never built is a legitimate state, not a fault: the wasm build
