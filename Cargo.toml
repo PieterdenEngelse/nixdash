@@ -3,3 +3,11 @@ members = ["engine", "ui"]
 # Built by corrosion for wasm32-unknown-emscripten, never for the host.
 exclude = ["ui-wasm/rust"]
 resolver = "2"
+
+# The one place the version is written. Five places held it before - both
+# crate manifests and the three Nix derivations - so cutting 0.1.1 meant
+# editing five files and the MSI would have been named 0.1.0 if one were
+# missed. The crates inherit it with `version.workspace = true`; the Nix
+# derivations read this file; the MSI build asks cargo.
+[workspace.package]
+version = "0.1.1"

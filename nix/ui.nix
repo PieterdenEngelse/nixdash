@@ -25,7 +25,7 @@ let
 in
 rustPlatform.buildRustPackage {
   pname = "nixdash-ui";
-  version = "0.1.1";
+  version = (lib.importTOML ../Cargo.toml).workspace.package.version;
 
   src = lib.cleanSourceWith {
     src = ../.;

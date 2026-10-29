@@ -8,7 +8,7 @@
 
 rustPlatform.buildRustPackage {
   pname = "nixdash-engine";
-  version = "0.1.1";
+  version = (lib.importTOML ../Cargo.toml).workspace.package.version;
 
   # Filter the source rather than passing the directory wholesale: target/
   # holds gigabytes of build output, and this is not a git repo so nothing

@@ -121,9 +121,15 @@ jobs:
         shell: pwsh
         run: |
           dotnet tool install --global wix --version 5.*
-          # Version comes from the crate, so the MSI and the binary it
-          # installs can never claim different versions.
-          $v = (Select-String -Path engine\Cargo.toml -Pattern '^version = "(.+)"').Matches[0].Groups[1].Value
+          # Ask cargo, rather than grepping a manifest. The version lives in
+          # [workspace.package] and the crates inherit it, so engine\Cargo.toml
+          # now reads `version.workspace = true` and the regex that used to be
+          # here would find nothing - silently, taking the MSI's name with it.
+          # cargo resolves the inheritance and is the authority either way.
+          $meta = cargo metadata --no-deps --format-version 1 | ConvertFrom-Json
+          $v = ($meta.packages | Where-Object { $_.name -eq 'nixdash-ui' }).version
+          if (-not $v) { throw 'could not read the version from cargo metadata' }
+          "version from cargo metadata: $v"
 
           # ABSOLUTE, and this is the whole bug the sixth run exposed. With a
           # relative -d StageDir=stage the Files wildcard in nixdash.wxs
