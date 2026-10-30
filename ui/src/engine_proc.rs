@@ -5,23 +5,14 @@
 //! 127.0.0.1:3100. This module does nothing there, and must not - two engines
 //! on one port means the second fails to bind.
 //!
-//! Two packaged cases need it:
+//! The .deb and .rpm need it. They *do* ship a systemd user unit, but neither
+//! Debian nor Fedora enables a user unit on install, so a fresh install would
+//! otherwise put a menu entry on screen that opens a window reaching nothing.
+//! The desktop entry passes the flag, and the port check below means enabling
+//! the unit later costs nothing: the UI finds the engine already listening and
+//! attaches instead of starting a second one.
 //!
-//! - **The MSI.** Windows has no user-scoped service manager worth using
-//!   here. A Windows Service runs in session 0 as SYSTEM, which is the wrong
-//!   context for an engine whose whole job is to answer questions about
-//!   *this* user's environment. The Start Menu shortcut passes the flag.
-//! - **The .deb and .rpm.** These *do* ship a systemd user unit, but neither
-//!   Debian nor Fedora enables a user unit on install, so a fresh install
-//!   would otherwise put a menu entry on screen that opens a window reaching
-//!   nothing. The desktop entry passes the flag, and the port check below
-//!   means enabling the unit later costs nothing: the UI finds the engine
-//!   already listening and attaches instead of starting a second one.
-//!
-//! Opt-in by `--spawn-engine` on argv, and only there. An env var was the
-//! other candidate and lost: a Windows shortcut can pass an argument but
-//! cannot set an environment variable, so the flag is the one mechanism both
-//! packages can use.
+//! Opt-in by `--spawn-engine` on argv, and only there.
 //!
 //! Deliberately not keyed off "is there an engine binary next to me", which
 //! reads as the more elegant signal and is wrong: under `cargo build` both
@@ -64,8 +55,7 @@ impl Drop for EngineGuard {
 /// Is something already listening on the engine's port?
 fn port_in_use(port: u16) -> bool {
     // A successful connect is the only reliable answer. Binding to test would
-    // race the engine we are about to start, and on Windows SO_EXCLUSIVEADDRUSE
-    // makes a bind probe report differently from a connect anyway.
+    // race the engine we are about to start.
     TcpStream::connect_timeout(
         &SocketAddrV4::new(Ipv4Addr::LOCALHOST, port).into(),
         Duration::from_millis(200),
@@ -99,14 +89,9 @@ pub fn start() -> Option<EngineGuard> {
     }
 
     // Beside this executable, which is what both packages lay down: /usr/bin
-    // for the .deb and .rpm, the install directory for the MSI.
+    // for the .deb and .rpm.
     let exe = std::env::current_exe().ok()?;
-    let name = if cfg!(windows) {
-        "nixdash-engine.exe"
-    } else {
-        "nixdash-engine"
-    };
-    let bin = exe.parent()?.join(name);
+    let bin = exe.parent()?.join("nixdash-engine");
     if !bin.is_file() {
         eprintln!(
             "nixdash-ui: --spawn-engine, but no engine at {}",

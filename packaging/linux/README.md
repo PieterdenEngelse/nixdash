@@ -91,7 +91,7 @@ being covered by the `debian:12` one, even though its glibc is higher and
 would otherwise be the only thing that mattered.
 
 The engine has none of those tags, because `nix/engine.nix` keeps it
-Qt-free — which is also why it is the half that cross-compiles to Windows.
+Qt-free.
 
 ### Taking the wrong file is refused, not tolerated
 

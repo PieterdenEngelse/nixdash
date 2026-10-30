@@ -6,8 +6,8 @@ resolver = "2"
 
 # The one place the version is written. Five places held it before - both
 # crate manifests and the three Nix derivations - so cutting 0.1.1 meant
-# editing five files and the MSI would have been named 0.1.0 if one were
-# missed. The crates inherit it with `version.workspace = true`; the Nix
-# derivations read this file; the MSI build asks cargo.
+# editing five files, and missing one would have shipped a package under
+# the wrong version. The crates inherit it with `version.workspace = true`; the Nix
+# derivations read this file.
 [workspace.package]
 version = "0.1.1"

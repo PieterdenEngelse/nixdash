@@ -19,13 +19,10 @@ is always current if this table has fallen behind.
 | Debian 12, Ubuntu 24.04 | [nixdash_0.1.1_debian12_amd64.deb](https://github.com/PieterdenEngelse/nixdash/releases/download/v0.1.1/nixdash_0.1.1_debian12_amd64.deb) | `sudo apt install ./nixdash_0.1.1_debian12_amd64.deb` |
 | Debian 13 | [nixdash_0.1.1_debian13_amd64.deb](https://github.com/PieterdenEngelse/nixdash/releases/download/v0.1.1/nixdash_0.1.1_debian13_amd64.deb) | `sudo apt install ./nixdash_0.1.1_debian13_amd64.deb` |
 | Fedora 41 | [nixdash-0.1.1-fedora41.x86_64.rpm](https://github.com/PieterdenEngelse/nixdash/releases/download/v0.1.1/nixdash-0.1.1-fedora41.x86_64.rpm) | `sudo dnf install ./nixdash-0.1.1-fedora41.x86_64.rpm` |
-| Windows 10+ | [nixdash-0.1.1-x64.msi](https://github.com/PieterdenEngelse/nixdash/releases/download/v0.1.1/nixdash-0.1.1-x64.msi) | double-click it |
 | **NixOS** | — | the home-manager module: [Installing](#installing), below |
 
-Windows will say the publisher is unknown, because the MSI is unsigned:
-*More info → Run anyway*. It installs per-user and never asks for an
-administrator. Took the wrong Linux file? `apt` and `dnf` refuse it rather
-than installing something that opens a broken window.
+Took the wrong Linux file? `apt` and `dnf` refuse it rather than installing
+something that opens a broken window.
 
 [On a machine without Nix](#on-a-machine-without-nix) has the rest: enabling
 the engine at login, which panels can answer off NixOS, and how the packages
@@ -313,21 +310,14 @@ answer.
 
 Not on a NixOS machine, and that is not a limitation of the setup. A native
 package cannot reference `/nix/store`, and a build here links against Qt and
-glibc 2.42 that no distribution ships; the Windows UI has no cross path at
-all, because `pkgsCross.mingwW64.qt6` is unsupported. Each package is built
-inside the system it targets by
-[CI](.github/workflows/linux-packages.yml). The engine alone cross-compiles:
-
-```sh
-just engine-windows   # nixdash-engine.exe, the engine half of the MSI
-```
+glibc 2.42 that no distribution ships. Each package is built inside the
+system it targets by [CI](.github/workflows/linux-packages.yml).
 
 | | Built in | Qt | glibc |
 |---|---|---|---|
 | `.deb` | `debian:12` | 6.4.2 | 2.36 |
 | `.deb` | `debian:13` | 6.8.2 | 2.41 |
 | `.rpm` | `fedora:41` | 6.8.3 | 2.40 |
-| `.msi` | `windows-latest` | 6.8.3 | — |
 
 ## After installing
 

@@ -10,18 +10,9 @@
   # ui-wasm/flake.nix instead: `nix develop ./ui-wasm`.
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/7fc6f2c20af0";
-
-    # nixpkgs' rustc ships std for the host only, so cross-compiling the
-    # engine to Windows fails with "can't find crate for `std`" - the same
-    # wall qt6-wasm hit for wasm32-unknown-emscripten, and fenix is the same
-    # answer: upstream Rust's per-target std, inside Nix, with no rustup.
-    fenix = {
-      url = "github:nix-community/fenix";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
   };
 
-  outputs = { self, nixpkgs, fenix }:
+  outputs = { self, nixpkgs }:
     let
       system = "x86_64-linux";
       pkgs = nixpkgs.legacyPackages.${system};
@@ -42,17 +33,6 @@
         QML2_IMPORT_PATH = "${qtEnv}/${pkgs.qt6.qtbase.qtQmlPrefix}";
       };
 
-      # rustc and cargo plus the Windows target's std. cargo runs on the host,
-      # so only rust-std is per-target.
-      rustWindows = fenix.packages.${system}.combine (
-        with fenix.packages.${system};
-        [
-          stable.rustc
-          stable.cargo
-          targets."x86_64-pc-windows-gnu".stable.rust-std
-        ]
-      );
-
       # Optional dev shell additions, toggled from nixdash's Config page.
       # That file is GENERATED - nixdash rewrites it whole. This flake is
       # hand-written and the app never touches it, which is what keeps the
@@ -67,13 +47,6 @@
 
         # Shared with the home-manager module; see nix/ui.nix.
         ui = pkgs.callPackage ./nix/ui.nix { };
-
-        # `nix build .#engine-windows` - nixdash-engine.exe. The UI half of the
-        # MSI is not buildable here; see nix/windows-engine.nix.
-        engine-windows = pkgs.callPackage ./nix/windows-engine.nix {
-          inherit rustWindows;
-          mingwPkgs = pkgs.pkgsCross.mingwW64;
-        };
 
         default = engine;
       };

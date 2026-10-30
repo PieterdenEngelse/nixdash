@@ -88,11 +88,11 @@ fn main() {
     QQuickStyle::set_style(&QString::from("Fusion"));
 
     // Held for the whole run, because dropping it kills the engine it
-    // started. `--spawn-engine` is passed by the packages' desktop entry and
-    // Start Menu shortcut; without it this is None and nothing starts, which
-    // is what keeps the systemd-user-service path untouched. Qt leaves argv
-    // it does not recognise alone, so the flag reaching QGuiApplication below
-    // is harmless.
+    // started. `--spawn-engine` is passed by the packages' desktop entry;
+    // without it this is None and nothing starts, which is what keeps the
+    // systemd-user-service path untouched. Qt leaves argv it does not
+    // recognise alone, so the flag reaching QGuiApplication below is
+    // harmless.
     let _engine = engine_proc::start();
 
     let mut app = QGuiApplication::new();

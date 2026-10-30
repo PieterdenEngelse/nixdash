@@ -39,7 +39,7 @@ pub(crate) fn ui_candidates() -> Vec<PathBuf> {
     out.push(PathBuf::from("/run/current-system/sw/bin/nixdash-ui"));
 
     // Beside this executable, which is where every PACKAGED install puts the
-    // UI: /usr/bin for the .deb and .rpm, the install directory for the MSI.
+    // UI: /usr/bin for the .deb and .rpm.
     // Without it this panel reported "the desktop UI is not installed" on a
     // Debian box where the UI was sitting next to the engine that said so -
     // measured, 2026-10-29, with the published 0.1.0 .deb. The three Nix
@@ -51,11 +51,7 @@ pub(crate) fn ui_candidates() -> Vec<PathBuf> {
     // about whoever started the service.
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
-            out.push(dir.join(if cfg!(windows) {
-                "nixdash-ui.exe"
-            } else {
-                "nixdash-ui"
-            }));
+            out.push(dir.join("nixdash-ui"));
         }
     }
     out

@@ -577,33 +577,6 @@ which:
 # .rpm must link against the distribution's own Qt and glibc, not the ones in
 # /nix/store, so both are built by CI. See packaging/linux/README.md.
 
-# Half of the MSI payload; the Qt UI is the other half and cannot be built
-# on NixOS at all - see packaging/wix/README.md.
-
-# Cross-compile the engine to a Windows .exe.
-[group('package')]
-engine-windows:
-    #!/usr/bin/env bash
-    set -euo pipefail
-
-    nix build .#engine-windows -o result-engine-windows
-
-    # Checking the magic bytes, because the first version of this derivation
-    # silently produced an ELF binary named nixdash-engine.exe: setting
-    # CARGO_BUILD_TARGET on a native stdenv is overwritten by
-    # buildRustPackage, and nothing in the build failed. 4d5a is "MZ".
-    exe=result-engine-windows/bin/nixdash-engine.exe
-    magic=$(head -c2 "$exe" | od -An -tx1 | tr -d ' \n')
-    if [ "$magic" != "4d5a" ]; then
-        echo "not a PE binary: magic $magic, expected 4d5a" >&2
-        exit 1
-    fi
-    echo "$exe  PE/x86_64  $(du -h "$exe" | cut -f1)"
-
-    echo
-    echo "Runs under Wine, which is the only way to exercise it here:"
-    echo "  nix shell nixpkgs#wine64 --command wine $exe"
-
 # Check the .deb's layout without CI. The package it builds is NOT usable on
 # Debian - the binaries inside link against /nix/store and glibc 2.42 - but
 # the asset list, the file layout and the generated control file are the same
